@@ -28,12 +28,12 @@ pub struct Dataset {
     /// Order is inverted: rows are features, columns are observation
     /// This is because Nalgebra is column-major
     //noinspection RsFieldNaming
-    features: DynMatrix,
-    target: Vec<f64>,
+    pub features: DynMatrix,
+    pub target: Vec<f64>,
 }
 
 impl Dataset {
-    fn row(&self, n_row: usize) -> Vec<f64> {
+    pub fn row(&self, n_row: usize) -> Vec<f64> {
         let row = self.features.row(n_row);
         row.into_owned().as_slice().to_vec()
     }
@@ -41,11 +41,11 @@ impl Dataset {
 
 #[derive(Clone, Debug)]
 pub struct Params {
-    gamma: f64,
-    lambda: f64,
-    learning_rate: f64,
-    max_depth: usize,
-    min_split_gain: f64,
+    pub gamma: f64,
+    pub lambda: f64,
+    pub learning_rate: f64,
+    pub max_depth: usize,
+    pub min_split_gain: f64,
 }
 
 struct SplitNode {
@@ -103,7 +103,7 @@ impl Node {
 
         let sum_grad = sum(grad);
         let sum_hessian = sum(hessian);
-        let mut best_gain = 0.;
+        let mut best_gain = -::std::f64::INFINITY;
         let mut best_feature_id = None;
         let mut best_val = 0.;
         let mut best_left_instance_ids = None;
@@ -199,16 +199,16 @@ pub struct GBT {
 }
 
 impl GBT {
-    fn _calc_training_data_scores(&self, train_set: &Dataset, models: &[Node]) -> Vec<f64> {
+    fn _calc_training_data_scores(&self, train_set: &Dataset, models: &[Node]) -> Option<Vec<f64>> {
         if models.len() == 0 {
-            return Vec::new();
+            return None;
         }
         let nrows = train_set.features.nrows();
         let mut scores = Vec::with_capacity(nrows);
         for i in 0..nrows {
             scores.push(self._predict(&train_set.row(i), models));
         }
-        scores
+        Some(scores)
     }
 
     fn _calc_l2_gradient(
@@ -219,6 +219,8 @@ impl GBT {
         let labels = &train_set.target;
         let hessian: Vec<f64> = (0..labels.len()).map(|_| 2.).collect();
         if let Some(scores) = scores {
+            // println!("labels {}", labels.len());
+            // println!("scores {}", scores.len());
             let grad = (0..labels.len())
                 .map(|i| 2. * (labels[i] - scores[i]))
                 .collect();
@@ -234,7 +236,7 @@ impl GBT {
         let mut errors = Vec::new();
         for (n_row, &target) in data_set.target.iter().enumerate() {
             let diff = target - self._predict(&data_set.row(n_row), &models);
-            errors.push(diff.sqrt());
+            errors.push(diff.powi(2));
         }
         return mean(&errors);
     }
@@ -290,7 +292,18 @@ impl GBT {
         valid_set: Option<&Dataset>,
         early_stopping_rounds: usize,
     ) {
-        let mut models = Vec::new();
+        // Check we have no NAN in input
+        for &x in train_set.features.as_slice() {
+            if x.is_nan() {
+                panic!("Found NAN in the features")
+            }
+        }
+        for &x in &train_set.target {
+            if x.is_nan() {
+                panic!("Found NAN in the features")
+            }
+        }
+
         let mut shrinkage_rate = 1.;
         let mut best_iteration = 0;
         let mut best_val_loss = None;
@@ -302,8 +315,8 @@ impl GBT {
         );
         for iter_cnt in 0..(num_boost_round) {
             let iter_start_time = Instant::now();
-            let scores = self._calc_training_data_scores(train_set, &models);
-            let (grad, hessian) = self._calc_gradient(train_set, Some(scores));
+            let scores = self._calc_training_data_scores(train_set, &self.models);
+            let (grad, hessian) = self._calc_gradient(train_set, scores);
             let learner = Node::build(
                 &train_set.features,
                 &grad,
@@ -315,18 +328,19 @@ impl GBT {
             if iter_cnt > 0 {
                 shrinkage_rate *= self.params.learning_rate;
             }
-            models.push(learner);
-            let train_loss = self._calc_loss(&train_set, &models);
-            let val_loss = valid_set.map(|s| self._calc_loss(s, &models));
+            self.models.push(learner);
+            let train_loss = self._calc_loss(&train_set, &self.models);
+            let val_loss = valid_set.map(|s| self._calc_loss(s, &self.models));
             let val_loss_str = val_loss
                 .map(|e| format!("{:.10}", e))
                 .unwrap_or("-".to_string());
             println!(
-                "Iter {}, Train's L2: {:.10}, Valid's L2: {}, Elapsed: {:.2} secs",
+                "Iter {}, Train's L2: {:.10}, Valid's L2: {}, Elapsed: {:.2} secs for {} models",
                 iter_cnt,
                 train_loss,
                 val_loss_str,
-                iter_start_time.elapsed().as_nanos()
+                iter_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.,
+                self.models.len(),
             );
 
             if let Some(val_loss_) = val_loss {
@@ -335,31 +349,34 @@ impl GBT {
                         best_val_loss = val_loss;
                         best_iteration = iter_cnt;
                     }
+                    if iter_cnt - best_iteration >= early_stopping_rounds {
+                        println!("Early stopping, best iteration is:");
+                        println!(
+                            "Iter {:}, Train's L2: {:.10}",
+                            best_iteration,
+                            best_val_loss
+                                .map(|e| format!("{:.10}", e))
+                                .unwrap_or("-".to_string())
+                        );
+                        break;
+                    }
                 }
-            }
-            if iter_cnt - best_iteration >= early_stopping_rounds {
-                println!("Early stopping, best iteration is:");
-                println!(
-                    "Iter {:}, Train's L2: {:.10}",
-                    best_iteration,
-                    best_val_loss
-                        .map(|e| format!("{:.10}", e))
-                        .unwrap_or("-".to_string())
-                );
-                break;
             }
         }
 
-        self.models = models;
         self.best_iteration = best_iteration;
         println!(
             "Training finished. Elapsed: {:.2} secs",
-            train_start_time.elapsed().as_nanos()
+            train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
         );
     }
 
     fn _predict(&self, features: &[f64], models: &[Node]) -> f64 {
-        models.iter().map(|model| model.predict(features)).sum()
+        let o: f64 = models.iter().map(|model| model.predict(features)).sum();
+        if o.is_nan() {
+            panic!("NAN in output of prediction");
+        }
+        o
     }
 
     pub fn predict(&self, features: &[f64]) -> f64 {

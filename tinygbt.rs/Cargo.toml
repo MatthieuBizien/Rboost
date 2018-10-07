@@ -10,5 +10,4 @@ ord_subset = "3"
 rand = "0.5.5"
 
 [dev-dependencies]
-csv = "1"
 failure = "0.1.2"

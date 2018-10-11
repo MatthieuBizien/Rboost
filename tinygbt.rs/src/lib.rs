@@ -1,19 +1,18 @@
 #![feature(duration_as_u128)]
+#![feature(plugin, custom_attribute)]
 
 extern crate core;
-extern crate nalgebra;
 extern crate ord_subset;
 extern crate rand;
 
 mod matrix;
 
-use nalgebra::DMatrix;
 use ord_subset::OrdSubsetSliceExt;
 use std::time::Instant;
 
 use rand::random;
 
-type DynMatrix = DMatrix<f64>;
+pub use crate::matrix::{ColumnMajorMatrix, StridedVecView};
 
 fn sum(v: &[f64]) -> f64 {
     let mut o = 0.;
@@ -37,33 +36,29 @@ fn mean(v: &[f64]) -> f64 {
 
 pub struct Dataset {
     /// Order is inverted: rows are features, columns are observation
-    /// This is because Nalgebra is column-major
-    //noinspection RsFieldNaming
-    pub features: DynMatrix,
+    pub features: ColumnMajorMatrix<f64>,
     pub target: Vec<f64>,
 }
 
 impl Dataset {
-    pub fn row(&self, n_row: usize) -> Vec<f64> {
-        let row = self.features.row(n_row);
-        row.into_owned().as_slice().to_vec()
+    pub fn row<'a>(&'a self, n_row: usize) -> StridedVecView<f64> {
+        self.features.row(n_row)
     }
 
     pub fn sort_features(&self) -> Vec<Vec<usize>> {
-        let (nrows, ncols) = (self.features.nrows(), self.features.ncols());
-        (0..ncols)
+        let (n_rows, n_cols) = (self.features.n_rows(), self.features.n_cols());
+        (0..n_cols)
             .map(|feature_id| {
-                let mut v: Vec<usize> = (0..nrows).collect();
-                v.ord_subset_sort_by_key(|&row_id| self.features[(row_id, feature_id)]);
+                let v: Vec<usize> = (0..n_rows).collect();
+                // TODO v.ord_subset_sort_by_key(|&row_id| self.features[(row_id, feature_id)]);
                 v
             }).collect()
     }
 }
 
 struct TrainDataSet<'a> {
-    pub features: &'a DynMatrix,
+    pub features: &'a ColumnMajorMatrix<f64>,
     pub target: &'a Vec<f64>,
-    sorted_features: Vec<Vec<usize>>,
     pub grad: Vec<f64>,
     pub hessian: Vec<f64>,
 }
@@ -118,8 +113,7 @@ impl Node {
         depth: usize,
         param: &Params,
     ) -> Node {
-        let nrows = indices.len() as usize;
-        let nfeatures = train.features.ncols() as usize;
+        let nfeatures = train.features.n_cols() as usize;
 
         if depth > param.max_depth {
             let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)
@@ -149,15 +143,15 @@ impl Node {
             //     .map(|&nrow| train.sorted_features[feature_id][nrow])
             //     .collect();
 
-            for (&a, &b) in sorted_instance_ids
-                .iter()
-                .zip(sorted_instance_ids.iter().skip(1))
-            {
-                assert!(indices.contains(&a));
-                let a = train.features[(a, feature_id)];
-                let b = train.features[(b, feature_id)];
-                assert!(a <= b);
-            }
+            // for (&a, &b) in sorted_instance_ids
+            //     .iter()
+            //     .zip(sorted_instance_ids.iter().skip(1))
+            // {
+            //     assert!(indices.contains(&a));
+            //     let a = train.features[(a, feature_id)];
+            //     let b = train.features[(b, feature_id)];
+            //     assert!(a <= b);
+            // }
 
             for (j, &nrow) in sorted_instance_ids.iter().enumerate() {
                 grad_left += train.grad[nrow];
@@ -216,7 +210,7 @@ impl Node {
         })
     }
 
-    pub fn predict(&self, features: &[f64]) -> f64 {
+    pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {
         match &self {
             Node::Split(node) => {
                 if features[node.split_feature_id] <= node.split_val {
@@ -241,9 +235,9 @@ impl GBT {
         if models.len() == 0 {
             return None;
         }
-        let nrows = train_set.features.nrows();
-        let mut scores = Vec::with_capacity(nrows);
-        for i in 0..nrows {
+        let n_rows = train_set.features.n_rows();
+        let mut scores = Vec::with_capacity(n_rows);
+        for i in 0..n_rows {
             scores.push(self._predict(&train_set.row(i), models));
         }
         Some(scores)
@@ -296,7 +290,6 @@ impl GBT {
         TrainDataSet {
             features: &train_set.features,
             target: &train_set.target,
-            sorted_features: train_set.sort_features(),
             grad,
             hessian,
         }
@@ -332,7 +325,7 @@ impl GBT {
         early_stopping_rounds: usize,
     ) {
         // Check we have no NAN in input
-        for &x in train_set.features.as_slice() {
+        for &x in train_set.features.flat() {
             if x.is_nan() {
                 panic!("Found NAN in the features")
             }
@@ -402,7 +395,7 @@ impl GBT {
         );
     }
 
-    fn _predict(&self, features: &[f64], models: &[Node]) -> f64 {
+    fn _predict(&self, features: &StridedVecView<f64>, models: &[Node]) -> f64 {
         let o: f64 = models.iter().map(|model| model.predict(features)).sum();
         if o.is_nan() {
             panic!("NAN in output of prediction");
@@ -410,8 +403,8 @@ impl GBT {
         o
     }
 
-    pub fn predict(&self, features: &[f64]) -> f64 {
-        self._predict(features, &self.models)
+    pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {
+        self._predict(&features, &self.models)
     }
 }
 

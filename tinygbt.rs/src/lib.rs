@@ -1,8 +1,11 @@
 #![feature(duration_as_u128)]
 
+extern crate core;
 extern crate nalgebra;
 extern crate ord_subset;
 extern crate rand;
+
+mod matrix;
 
 use nalgebra::DMatrix;
 use ord_subset::OrdSubsetSliceExt;
@@ -44,6 +47,16 @@ impl Dataset {
     pub fn row(&self, n_row: usize) -> Vec<f64> {
         let row = self.features.row(n_row);
         row.into_owned().as_slice().to_vec()
+    }
+
+    pub fn sort_features(&self) -> Vec<Vec<usize>> {
+        let (nrows, ncols) = (self.features.nrows(), self.features.ncols());
+        (0..ncols)
+            .map(|feature_id| {
+                let mut v: Vec<usize> = (0..nrows).collect();
+                v.ord_subset_sort_by_key(|&row_id| self.features[(row_id, feature_id)]);
+                v
+            }).collect()
     }
 }
 
@@ -126,10 +139,29 @@ impl Node {
             let mut grad_left = 0.;
             let mut hessian_left = 0.;
 
-            let sorted_instance_ids = train.sorted_features[feature_id].clone();
-            for j in 0..nrows {
-                grad_left += train.grad[sorted_instance_ids[j]];
-                hessian_left += train.hessian[sorted_instance_ids[j]];
+            // sorted_instance_ids = instances[:, feature_id].argsort()
+            let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
+            sorted_instance_ids
+                .ord_subset_sort_by_key(|&row_id| train.features[(row_id, feature_id)]);
+
+            // let sorted_instance_ids: Vec<usize> = indices
+            //     .iter()
+            //     .map(|&nrow| train.sorted_features[feature_id][nrow])
+            //     .collect();
+
+            for (&a, &b) in sorted_instance_ids
+                .iter()
+                .zip(sorted_instance_ids.iter().skip(1))
+            {
+                assert!(indices.contains(&a));
+                let a = train.features[(a, feature_id)];
+                let b = train.features[(b, feature_id)];
+                assert!(a <= b);
+            }
+
+            for (j, &nrow) in sorted_instance_ids.iter().enumerate() {
+                grad_left += train.grad[nrow];
+                hessian_left += train.hessian[nrow];
                 let grad_right = sum_grad - grad_left;
                 let hessian_right = sum_hessian - hessian_left;
                 let current_gain = Self::_calc_split_gain(
@@ -145,7 +177,7 @@ impl Node {
                 if current_gain > best_gain {
                     best_gain = current_gain;
                     best_feature_id = Some(feature_id);
-                    best_val = train.features[(sorted_instance_ids[j], feature_id)];
+                    best_val = train.features[(nrow, feature_id)];
                     let (left_ids, right_ids) = sorted_instance_ids.split_at(j + 1);
                     best_left_instance_ids = Some(left_ids.to_vec());
                     best_right_instance_ids = Some(right_ids.to_vec());
@@ -261,18 +293,10 @@ impl GBT {
         let scores = self._calc_training_data_scores(train_set, &self.models);
         let (grad, hessian) = self._calc_gradient(train_set, scores);
 
-        let (nrows, ncols) = (train_set.features.nrows(), train_set.features.ncols());
-        let sorted_features = (0..ncols)
-            .map(|feature_id| {
-                let mut v: Vec<usize> = (0..nrows).collect();
-                v.ord_subset_sort_by_key(|&row_id| train_set.features[(row_id, feature_id)]);
-                v
-            }).collect();
-
         TrainDataSet {
             features: &train_set.features,
             target: &train_set.target,
-            sorted_features,
+            sorted_features: train_set.sort_features(),
             grad,
             hessian,
         }

@@ -47,6 +47,13 @@ impl Dataset {
     }
 }
 
+struct TrainDataSet<'a> {
+    pub features: &'a DynMatrix,
+    pub target: &'a Vec<f64>,
+    pub grad: Vec<f64>,
+    pub hessian: Vec<f64>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Params {
     pub gamma: f64,
@@ -91,24 +98,23 @@ impl Node {
     /// Exact Greedy Algorithm for Split Finding
     ///  (Refer to Algorithm1 of Reference[1])
     fn build(
-        instances: &DynMatrix,
-        grad: &[f64],
-        hessian: &[f64],
+        train: &TrainDataSet,
         indices: &[usize],
         shrinkage_rate: f64,
         depth: usize,
         param: &Params,
     ) -> Node {
         let nrows = indices.len() as usize;
-        let nfeatures = instances.ncols() as usize;
+        let nfeatures = train.features.ncols() as usize;
 
         if depth > param.max_depth {
-            let val = Node::_calc_leaf_weight(grad, hessian, param.lambda, indices) * shrinkage_rate;
+            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)
+                * shrinkage_rate;
             return Node::Leaf(LeafNode { val });
         }
 
-        let sum_grad = sum_indices(grad, indices);
-        let sum_hessian = sum_indices(hessian, indices);
+        let sum_grad = sum_indices(&train.grad, indices);
+        let sum_hessian = sum_indices(&train.hessian, indices);
         let mut best_gain = -::std::f64::INFINITY;
         let mut best_feature_id = None;
         let mut best_val = 0.;
@@ -121,11 +127,12 @@ impl Node {
 
             // sorted_instance_ids = instances[:, feature_id].argsort()
             let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
-            sorted_instance_ids.ord_subset_sort_by_key(|&row_id| instances[(row_id, feature_id)]);
+            sorted_instance_ids
+                .ord_subset_sort_by_key(|&row_id| train.features[(row_id, feature_id)]);
 
             for j in 0..nrows {
-                grad_left += grad[sorted_instance_ids[j]];
-                hessian_left += hessian[sorted_instance_ids[j]];
+                grad_left += train.grad[sorted_instance_ids[j]];
+                hessian_left += train.hessian[sorted_instance_ids[j]];
                 let grad_right = sum_grad - grad_left;
                 let hessian_right = sum_hessian - hessian_left;
                 let current_gain = Self::_calc_split_gain(
@@ -141,7 +148,7 @@ impl Node {
                 if current_gain > best_gain {
                     best_gain = current_gain;
                     best_feature_id = Some(feature_id);
-                    best_val = instances[(sorted_instance_ids[j], feature_id)];
+                    best_val = train.features[(sorted_instance_ids[j], feature_id)];
                     let (left_ids, right_ids) = sorted_instance_ids.split_at(j + 1);
                     best_left_instance_ids = Some(left_ids.to_vec());
                     best_right_instance_ids = Some(right_ids.to_vec());
@@ -154,15 +161,14 @@ impl Node {
         let best_right_instance_ids = best_right_instance_ids.expect("best_right_instance_ids");
 
         if best_gain < param.min_split_gain {
-            let val = Node::_calc_leaf_weight(grad, hessian, param.lambda, indices) * shrinkage_rate;
+            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)
+                * shrinkage_rate;
             return Node::Leaf(LeafNode { val });
         }
 
         let get_child = |instance_ids: Vec<usize>| {
             Box::new(Self::build(
-                &instances,
-                &grad,
-                &hessian,
+                &train,
                 &instance_ids,
                 shrinkage_rate,
                 depth + 1,
@@ -254,24 +260,21 @@ impl GBT {
         self._calc_l2_gradient(&data_set, scores)
     }
 
-    fn _build_learner(
-        &self,
-        train_set: &Dataset,
-        grad: &[f64],
-        hessian: &[f64],
-        shrinkage_rate: f64,
-    ) -> Node {
-        let depth = 0;
-        let indices: Vec<usize> = (0..train_set.target.len()).collect();
-        Node::build(
-            &train_set.features,
+    fn prepare_train<'a>(&self, train_set: &'a Dataset) -> TrainDataSet<'a> {
+        let scores = self._calc_training_data_scores(train_set, &self.models);
+        let (grad, hessian) = self._calc_gradient(train_set, scores);
+        TrainDataSet {
+            features: &train_set.features,
+            target: &train_set.target,
             grad,
             hessian,
-            &indices,
-            shrinkage_rate,
-            depth,
-            &self.params,
-        )
+        }
+    }
+
+    fn _build_learner(&self, train: &TrainDataSet, shrinkage_rate: f64) -> Node {
+        let depth = 0;
+        let indices: Vec<usize> = (0..train.target.len()).collect();
+        Node::build(&train, &indices, shrinkage_rate, depth, &self.params)
     }
 
     pub fn build(
@@ -320,9 +323,8 @@ impl GBT {
         );
         for iter_cnt in 0..(num_boost_round) {
             let iter_start_time = Instant::now();
-            let scores = self._calc_training_data_scores(train_set, &self.models);
-            let (grad, hessian) = self._calc_gradient(train_set, scores);
-            let learner = self._build_learner(&train_set, &grad, &hessian, shrinkage_rate);
+            let train = self.prepare_train(&train_set);
+            let learner = self._build_learner(&train, shrinkage_rate);
             if iter_cnt > 0 {
                 shrinkage_rate *= self.params.learning_rate;
             }

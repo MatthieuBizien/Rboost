@@ -50,6 +50,7 @@ impl Dataset {
 struct TrainDataSet<'a> {
     pub features: &'a DynMatrix,
     pub target: &'a Vec<f64>,
+    sorted_features: Vec<Vec<usize>>,
     pub grad: Vec<f64>,
     pub hessian: Vec<f64>,
 }
@@ -125,11 +126,7 @@ impl Node {
             let mut grad_left = 0.;
             let mut hessian_left = 0.;
 
-            // sorted_instance_ids = instances[:, feature_id].argsort()
-            let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
-            sorted_instance_ids
-                .ord_subset_sort_by_key(|&row_id| train.features[(row_id, feature_id)]);
-
+            let sorted_instance_ids = train.sorted_features[feature_id].clone();
             for j in 0..nrows {
                 grad_left += train.grad[sorted_instance_ids[j]];
                 hessian_left += train.hessian[sorted_instance_ids[j]];
@@ -263,9 +260,19 @@ impl GBT {
     fn prepare_train<'a>(&self, train_set: &'a Dataset) -> TrainDataSet<'a> {
         let scores = self._calc_training_data_scores(train_set, &self.models);
         let (grad, hessian) = self._calc_gradient(train_set, scores);
+
+        let (nrows, ncols) = (train_set.features.nrows(), train_set.features.ncols());
+        let sorted_features = (0..ncols)
+            .map(|feature_id| {
+                let mut v: Vec<usize> = (0..nrows).collect();
+                v.ord_subset_sort_by_key(|&row_id| train_set.features[(row_id, feature_id)]);
+                v
+            }).collect();
+
         TrainDataSet {
             features: &train_set.features,
             target: &train_set.target,
+            sorted_features,
             grad,
             hessian,
         }

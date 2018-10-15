@@ -1,5 +1,6 @@
 #![feature(duration_as_u128)]
 #![feature(plugin, custom_attribute)]
+#![feature(inner_deref)]
 
 extern crate core;
 extern crate ord_subset;
@@ -256,6 +257,15 @@ impl Node {
             Node::Leaf(node) => node.val,
         }
     }
+
+    pub fn par_predict(&self, train_set: &Dataset) -> Vec<f64> {
+        (0..train_set.target.len())
+            .into_par_iter()
+            .map(|i| {
+                let row = train_set.features.row(i);
+                self.predict(&row)
+            }).collect()
+    }
 }
 
 pub struct GBT {
@@ -265,71 +275,31 @@ pub struct GBT {
 }
 
 impl GBT {
-    fn _calc_training_data_scores(&self, train_set: &Dataset, models: &[Node]) -> Option<Vec<f64>> {
-        if models.len() == 0 {
-            return None;
-        }
-        let n_rows = train_set.features.n_rows();
-        let scores: Vec<f64> = (0..n_rows)
-            .into_par_iter()
-            .map(|i| self._predict(&train_set.row(i), models))
+    fn _calc_l2_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        let hessian: Vec<f64> = (0..target.len()).map(|_| 2.).collect();
+        let grad = (0..target.len())
+            .map(|i| 2. * (target[i] - predictions[i]))
             .collect();
-        Some(scores)
+        (grad, hessian)
     }
 
-    fn _calc_l2_gradient(
-        &self,
-        train_set: &Dataset,
-        scores: Option<Vec<f64>>,
-    ) -> (Vec<f64>, Vec<f64>) {
-        let labels = &train_set.target;
-        let hessian: Vec<f64> = (0..labels.len()).map(|_| 2.).collect();
-        if let Some(scores) = scores {
-            let grad = (0..labels.len())
-                .map(|i| 2. * (labels[i] - scores[i]))
-                .collect();
-            return (grad, hessian);
-        } else {
-            let grad = (0..labels.len()).map(|_| random()).collect();
-            //let grad = np.random.uniform(size = len(labels))
-            (grad, hessian)
-        }
-    }
-
-    fn _calc_l2_loss(&self, data_set: &Dataset, models: &[Node]) -> f64 {
+    fn _calc_l2_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
         let mut errors = Vec::new();
-        for (n_row, &target) in data_set.target.iter().enumerate() {
-            let diff = target - self._predict(&data_set.row(n_row), &models);
+        for (n_row, &target) in target.iter().enumerate() {
+            let diff = target - predictions[n_row];
             errors.push(diff.powi(2));
         }
         return mean(&errors);
     }
 
     /// For now, only L2 loss is supported
-    fn _calc_loss(&self, data_set: &Dataset, models: &[Node]) -> f64 {
-        self._calc_l2_loss(&data_set, models)
+    fn _calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
+        self._calc_l2_loss(target, predictions)
     }
 
     /// For now, only L2 loss is supported
-    fn _calc_gradient(&self, data_set: &Dataset, scores: Option<Vec<f64>>) -> (Vec<f64>, Vec<f64>) {
-        self._calc_l2_gradient(&data_set, scores)
-    }
-
-    fn prepare_train<'a>(
-        &self,
-        train_set: &'a Dataset,
-        sorted_features: &'a ColumnMajorMatrix<usize>,
-    ) -> TrainDataSet<'a> {
-        let scores = self._calc_training_data_scores(train_set, &self.models);
-        let (grad, hessian) = self._calc_gradient(train_set, scores);
-
-        TrainDataSet {
-            features: &train_set.features,
-            target: &train_set.target,
-            sorted_features,
-            grad,
-            hessian,
-        }
+    fn _calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        self._calc_l2_gradient(target, predictions)
     }
 
     fn _build_learner(&self, train: &TrainDataSet, shrinkage_rate: f64) -> Node {
@@ -388,32 +358,46 @@ impl GBT {
             "Training until validation scores don't improve for {} rounds.",
             early_stopping_rounds
         );
+        let mut train_scores: Vec<f64> = (0..train_set.target.len()).map(|_| 0.).collect();
+        let mut val_scores: Option<Vec<f64>> =
+            valid_set.map(|dataset| (0..dataset.target.len()).map(|_| 0.).collect());
+
         for iter_cnt in 0..(num_boost_round) {
             let iter_start_time = Instant::now();
-            let train = self.prepare_train(&train_set, &sorted_features);
+            let (grad, hessian) = self._calc_gradient(&train_set.target, &train_scores);
+
+            // TODO seems to work, but is it sound?
+            let grad = if iter_cnt == 0 {
+                grad.into_iter().map(|i| i * 0.5).collect()
+            } else {
+                grad
+            };
+
+            let train = TrainDataSet {
+                features: &train_set.features,
+                target: &train_set.target,
+                sorted_features: &sorted_features,
+                grad,
+                hessian,
+            };
             let learner = self._build_learner(&train, shrinkage_rate);
             if iter_cnt > 0 {
                 shrinkage_rate *= self.params.learning_rate;
             }
-            self.models.push(learner);
-            let train_loss = self._calc_loss(&train_set, &self.models);
-            let val_loss = valid_set.map(|s| self._calc_loss(s, &self.models));
-            let val_loss_str = val_loss
-                .map(|e| format!("{:.10}", e))
-                .unwrap_or("-".to_string());
-            println!(
-                "Iter {}, Train's L2: {:.10}, Valid's L2: {}, Elapsed: {:.2} secs for {} models",
-                iter_cnt,
-                train_loss,
-                val_loss_str,
-                iter_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.,
-                self.models.len(),
-            );
+            for (i, val) in learner.par_predict(&train_set).into_iter().enumerate() {
+                train_scores[i] += val;
+            }
 
-            if let Some(val_loss_) = val_loss {
+            if let Some(valid_set) = valid_set {
+                let val_scores = val_scores.as_mut().expect("No val score");
+                for (i, val) in learner.par_predict(&valid_set).into_iter().enumerate() {
+                    val_scores[i] += val
+                }
+                let val_loss = self._calc_loss(&valid_set.target, &val_scores);
+
                 if let Some(best_val_loss_) = best_val_loss {
-                    if val_loss_ < best_val_loss_ || iter_cnt == 0 {
-                        best_val_loss = val_loss;
+                    if val_loss < best_val_loss_ || iter_cnt == 0 {
+                        best_val_loss = Some(val_loss);
                         best_iteration = iter_cnt;
                     }
                     if iter_cnt - best_iteration >= early_stopping_rounds {
@@ -428,7 +412,19 @@ impl GBT {
                         break;
                     }
                 }
-            }
+                self.models.push(learner);
+            };
+            /*
+            println!(
+                "Iter {}, Train's L2: {:.10}, Valid's L2: {}, Elapsed: {:.2} secs for {} models",
+                iter_cnt,
+                self._calc_loss(&train_set.target, &train_scores),
+                valid_set.map(|s| self._calc_loss(&s.target, val_scores.deref().unwrap()))
+                    .map(|val_loss| format!("{:.10}", val_loss))
+                    .unwrap_or("-".to_string()),
+                iter_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.,
+                self.models.len(),
+            );*/
         }
 
         self.best_iteration = best_iteration;

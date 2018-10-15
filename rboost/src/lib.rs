@@ -19,6 +19,12 @@ use rand::random;
 
 pub use crate::matrix::{ColumnMajorMatrix, StridedVecView};
 
+pub static DEFAULT_GAMMA: f64 = 0.;
+pub static DEFAULT_LAMBDA: f64 = 1.;
+pub static DEFAULT_LEARNING_RATE: f64 = 0.8;
+pub static DEFAULT_MAX_DEPTH: usize = 3;
+pub static DEFAULT_MIN_SPLIT_GAIN: f64 = 0.1;
+
 fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
     let mut o = 0.;
     for &i in indices {
@@ -82,6 +88,18 @@ pub struct Params {
     pub learning_rate: f64,
     pub max_depth: usize,
     pub min_split_gain: f64,
+}
+
+impl Params {
+    pub fn new() -> Self {
+        Params {
+            gamma: DEFAULT_GAMMA,
+            lambda: DEFAULT_LAMBDA,
+            learning_rate: DEFAULT_LEARNING_RATE,
+            max_depth: DEFAULT_MAX_DEPTH,
+            min_split_gain: DEFAULT_MIN_SPLIT_GAIN,
+        }
+    }
 }
 
 struct SplitNode {

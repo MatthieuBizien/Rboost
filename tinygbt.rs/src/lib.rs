@@ -112,10 +112,12 @@ enum Node {
 impl Node {
     ///  Loss reduction
     /// (Refer to Eq7 of Reference[1])
-    fn _calc_split_gain(g: f64, h: f64, g_l: f64, h_l: f64, g_r: f64, h_r: f64, lambd: f64) -> f64 {
+    fn _calc_split_gain(g: f64, h: f64, g_l: f64, h_l: f64, lambd: f64) -> f64 {
         fn calc_term(g: f64, h: f64, lambd: f64) -> f64 {
             g.powi(2) / (h + lambd)
         }
+        let g_r = g - g_l;
+        let h_r = h - h_l;
         calc_term(g_l, h_l, lambd) + calc_term(g_r, h_r, lambd) - calc_term(g, h, lambd)
     }
 
@@ -138,31 +140,38 @@ impl Node {
         sorted_instance_ids
             .sort_unstable_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
 
-        let mut grad_left = 0.;
-        let mut hessian_left = 0.;
-        let mut best_gain = -::std::f64::INFINITY;
+        // We initialize at the first value
+        let mut grad_left = train.grad[sorted_instance_ids[0]];
+        let mut hessian_left = train.hessian[sorted_instance_ids[0]];
+        let mut best_gain =
+            Self::_calc_split_gain(sum_grad, sum_hessian, grad_left, hessian_left, param.lambda);
         let mut best_idx = 0;
-        let mut best_val = 0.;
+        let mut best_val = train.features[(0, feature_id)];
+        let mut last_val = train.features[(0, feature_id)];
 
-        for (j, &nrow) in sorted_instance_ids.iter().enumerate() {
+        for (j, &nrow) in sorted_instance_ids.iter().skip(1).enumerate() {
             grad_left += train.grad[nrow];
             hessian_left += train.hessian[nrow];
-            let grad_right = sum_grad - grad_left;
-            let hessian_right = sum_hessian - hessian_left;
+
+            // We can only split when the value change
+            let val = train.features[(nrow, feature_id)];
+            if val == last_val {
+                continue;
+            }
+            last_val = val;
+
             let current_gain = Self::_calc_split_gain(
                 sum_grad,
                 sum_hessian,
                 grad_left,
                 hessian_left,
-                grad_right,
-                hessian_right,
                 param.lambda,
             );
 
             if current_gain > best_gain {
                 best_gain = current_gain;
                 best_idx = j;
-                best_val = train.features[(nrow, feature_id)];
+                best_val = val;
             }
         }
 

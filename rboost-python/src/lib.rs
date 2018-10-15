@@ -1,60 +1,81 @@
-extern crate ndarray;
-extern crate numpy;
+// Source adopted from
+// https://github.com/tildeio/helix-website/blob/master/crates/word_count/src/lib.rs
+#![feature(specialization)]
+
+#[macro_use]
 extern crate pyo3;
 
-use ndarray::Axis;
-use ndarray::{ArrayD, ArrayView1, ArrayView2, ArrayViewD, ArrayViewMutD};
-use numpy::{IntoPyResult, PyArray1, PyArray2, PyArrayDyn, ToPyArray};
-use pyo3::prelude::{pymodinit, PyModule, PyResult, Python};
+use pyo3::prelude::*;
+use std::fs;
+use std::path::PathBuf;
+
+/// Represents a file that can be searched
+#[pyclass]
+struct WordCounter {
+    path: PathBuf,
+}
+
+#[pymethods]
+impl WordCounter {
+    #[new]
+    fn __new__(obj: &PyRawObject, path: String) -> PyResult<()> {
+        obj.init(|_| WordCounter {
+            path: PathBuf::from(path),
+        })
+    }
+
+    /// Searches for the word, parallelized by rayon
+    fn search(&self, py: Python, search: String) -> PyResult<usize> {
+        let contents = fs::read_to_string(&self.path)?;
+
+        let count =
+            py.allow_threads(move || contents.lines().map(|line| count_line(line, &search)).sum());
+        Ok(count)
+    }
+
+    /// Searches for a word in a classic sequential fashion
+    fn search_sequential(&self, needle: String) -> PyResult<usize> {
+        let contents = fs::read_to_string(&self.path)?;
+
+        let result = contents.lines().map(|line| count_line(line, &needle)).sum();
+
+        Ok(result)
+    }
+}
+
+fn matches(word: &str, needle: &str) -> bool {
+    let mut needle = needle.chars();
+    for ch in word.chars().skip_while(|ch| !ch.is_alphabetic()) {
+        match needle.next() {
+            None => {
+                return !ch.is_alphabetic();
+            }
+            Some(expect) => {
+                if ch.to_lowercase().next() != Some(expect) {
+                    return false;
+                }
+            }
+        }
+    }
+    return needle.next().is_none();
+}
+
+/// Count the occurences of needle in line, case insensitive
+#[pyfunction]
+fn count_line(line: &str, needle: &str) -> usize {
+    let mut total = 0;
+    for word in line.split(' ') {
+        if matches(word, needle) {
+            total += 1;
+        }
+    }
+    total
+}
 
 #[pymodinit]
-fn rboost(_py: Python, m: &PyModule) -> PyResult<()> {
-    fn fit(x: PyArray2<f64>, y: PyArray1<f64>) -> f64 {
-        let x: ArrayView2<f64> = x.as_array().unwrap();
-        let y: ArrayView1<f64> = y.as_array().unwrap();
-        let target: Vec<f64> = y.iter().map(|e| (*e).clone()).collect();
-        let features: Vec<Vec<f64>> = (0..x.rows())
-            .map(|col| {
-                x.subview(Axis(1), col)
-                    .iter()
-                    .map(|e| (*e).clone())
-                    .collect()
-            }).collect();
-        y.scalar_sum() + x.scalar_sum()
-    }
-
-    // immutable example
-    fn axpy(a: f64, x: ArrayViewD<f64>, y: ArrayViewD<f64>) -> ArrayD<f64> {
-        a * &x + &y
-    }
-
-    // mutable example (no return)
-    fn mult(a: f64, mut x: ArrayViewMutD<f64>) {
-        x *= a;
-    }
-
-    // wrapper of `axpy`
-    #[pyfn(m, "axpy")]
-    fn axpy_py(
-        py: Python,
-        a: f64,
-        x: &PyArrayDyn<f64>,
-        y: &PyArrayDyn<f64>,
-    ) -> PyResult<PyArrayDyn<f64>> {
-        // you can convert numpy error into PyErr via ?
-        let x = x.as_array()?;
-        // you can also specify your error context, via closure
-        let y = y.as_array().into_pyresult_with(|| "y must be f64 array")?;
-        Ok(axpy(a, x, y).to_pyarray(py).to_owned(py))
-    }
-
-    // wrapper of `mult`
-    #[pyfn(m, "mult")]
-    fn mult_py(_py: Python, a: f64, x: &PyArrayDyn<f64>) -> PyResult<()> {
-        let x = x.as_array_mut()?;
-        mult(a, x);
-        Ok(())
-    }
+fn rboost_python(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_function!(count_line))?;
+    m.add_class::<WordCounter>()?;
 
     Ok(())
 }

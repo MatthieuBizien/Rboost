@@ -1,5 +1,5 @@
 [package]
-name = "tinygbt"
+name = "rboost"
 version = "0.1.0"
 authors = ["Matthieu Bizien <matthieu@databiz.io>"]
 edition = "2018"

@@ -1,8 +1,8 @@
 extern crate failure;
-extern crate tinygbt;
+extern crate rboost;
 
 use failure::Error;
-use tinygbt::{ColumnMajorMatrix, Dataset, Params, GBT};
+use rboost::{ColumnMajorMatrix, Dataset, Params, GBT};
 
 fn parse_tsv(data: &str) -> Result<Dataset, Error> {
     let mut target: Vec<f64> = Vec::new();
@@ -21,9 +21,9 @@ fn parse_tsv(data: &str) -> Result<Dataset, Error> {
 }
 
 fn main() {
-    let train = include_str!("../../tinygbt/data/regression.train");
+    let train = include_str!("../data/regression.train");
     let train = parse_tsv(train).expect("Train data");
-    let test = include_str!("../../tinygbt/data/regression.test");
+    let test = include_str!("../data/regression.test");
     let test = parse_tsv(test).expect("Train data");
 
     let params = Params {

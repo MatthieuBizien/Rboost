@@ -1,7 +1,0 @@
-[package]
-name = "rboost"
-version = "0.1.0"
-authors = ["Matthieu Bizien <matthieu@databiz.io>"]
-
-[dependencies]
-assert_approx_eq = "1.0.0"

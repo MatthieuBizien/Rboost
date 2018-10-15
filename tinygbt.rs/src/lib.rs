@@ -41,23 +41,42 @@ pub struct Dataset {
 }
 
 impl Dataset {
-    pub fn row<'a>(&'a self, n_row: usize) -> StridedVecView<f64> {
+    pub fn row(&self, n_row: usize) -> StridedVecView<f64> {
         self.features.row(n_row)
     }
 
-    pub fn sort_features(&self) -> Vec<Vec<usize>> {
-        let (n_rows, n_cols) = (self.features.n_rows(), self.features.n_cols());
-        (0..n_cols)
-            .map(|feature_id| {
-                let v: Vec<usize> = (0..n_rows).collect();
-                // TODO v.ord_subset_sort_by_key(|&row_id| self.features[(row_id, feature_id)]);
-                v
-            }).collect()
+    pub fn sort_features(&self) -> ColumnMajorMatrix<usize> {
+        let columns = self
+            .features
+            .columns()
+            .map(|column| {
+                // Give the position in the column of the indices
+
+                // First we sort the index according to the positions
+                let mut sorted_indices: Vec<usize> = (0..column.len()).collect();
+                sorted_indices.ord_subset_sort_by_key(|&row_id| column[row_id]);
+
+                // Then we create the histogram of the features
+                let mut w: Vec<usize> = (0..column.len()).map(|_| 0).collect();
+                let mut current_order = 0;
+                let mut current_val = column[sorted_indices[0]];
+                for idx in sorted_indices.into_iter().skip(1) {
+                    let val = column[idx];
+                    if val != current_val {
+                        current_order += 1;
+                        current_val = val;
+                    }
+                    w[idx] = current_order;
+                }
+                w
+            }).collect();
+        ColumnMajorMatrix::from_columns(columns)
     }
 }
 
 struct TrainDataSet<'a> {
     pub features: &'a ColumnMajorMatrix<f64>,
+    pub sorted_features: &'a ColumnMajorMatrix<usize>,
     pub target: &'a Vec<f64>,
     pub grad: Vec<f64>,
     pub hessian: Vec<f64>,
@@ -135,23 +154,7 @@ impl Node {
 
             // sorted_instance_ids = instances[:, feature_id].argsort()
             let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
-            sorted_instance_ids
-                .ord_subset_sort_by_key(|&row_id| train.features[(row_id, feature_id)]);
-
-            // let sorted_instance_ids: Vec<usize> = indices
-            //     .iter()
-            //     .map(|&nrow| train.sorted_features[feature_id][nrow])
-            //     .collect();
-
-            // for (&a, &b) in sorted_instance_ids
-            //     .iter()
-            //     .zip(sorted_instance_ids.iter().skip(1))
-            // {
-            //     assert!(indices.contains(&a));
-            //     let a = train.features[(a, feature_id)];
-            //     let b = train.features[(b, feature_id)];
-            //     assert!(a <= b);
-            // }
+            sorted_instance_ids.sort_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
 
             for (j, &nrow) in sorted_instance_ids.iter().enumerate() {
                 grad_left += train.grad[nrow];
@@ -283,13 +286,18 @@ impl GBT {
         self._calc_l2_gradient(&data_set, scores)
     }
 
-    fn prepare_train<'a>(&self, train_set: &'a Dataset) -> TrainDataSet<'a> {
+    fn prepare_train<'a>(
+        &self,
+        train_set: &'a Dataset,
+        sorted_features: &'a ColumnMajorMatrix<usize>,
+    ) -> TrainDataSet<'a> {
         let scores = self._calc_training_data_scores(train_set, &self.models);
         let (grad, hessian) = self._calc_gradient(train_set, scores);
 
         TrainDataSet {
             features: &train_set.features,
             target: &train_set.target,
+            sorted_features,
             grad,
             hessian,
         }
@@ -341,13 +349,19 @@ impl GBT {
         let mut best_val_loss = None;
         let train_start_time = Instant::now();
 
+        let sorted_features = train_set.sort_features();
+        println!(
+            "Features sorted in {:.03}s",
+            train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+        );
+
         println!(
             "Training until validation scores don't improve for {} rounds.",
             early_stopping_rounds
         );
         for iter_cnt in 0..(num_boost_round) {
             let iter_start_time = Instant::now();
-            let train = self.prepare_train(&train_set);
+            let train = self.prepare_train(&train_set, &sorted_features);
             let learner = self._build_learner(&train, shrinkage_rate);
             if iter_cnt > 0 {
                 shrinkage_rate *= self.params.learning_rate;

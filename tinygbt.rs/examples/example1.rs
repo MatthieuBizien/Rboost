@@ -29,12 +29,12 @@ fn main() {
     let params = Params {
         gamma: 0.,
         lambda: 1.,
-        learning_rate: 0.3,
-        max_depth: 5,
+        learning_rate: 0.8,
+        max_depth: 3,
         min_split_gain: 0.1,
     };
 
-    let gbt = GBT::build(&params, &train, 20, Some(&test), 5);
+    let gbt = GBT::build(&params, &train, 100, Some(&test), 10);
     let yhat: Vec<f64> = (0..test.features.n_rows())
         .map(|i| gbt.predict(&test.row(i)))
         .collect();

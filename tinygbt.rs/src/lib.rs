@@ -7,23 +7,17 @@ extern crate ord_subset;
 extern crate rand;
 extern crate rayon;
 
+mod losses;
 mod matrix;
 
 use ord_subset::{OrdSubsetIterExt, OrdSubsetSliceExt};
 use rayon::prelude::*;
 use std::time::Instant;
 
+pub use crate::losses::*;
 use rand::random;
 
 pub use crate::matrix::{ColumnMajorMatrix, StridedVecView};
-
-fn sum(v: &[f64]) -> f64 {
-    let mut o = 0.;
-    for e in v.iter() {
-        o += *e;
-    }
-    o
-}
 
 fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
     let mut o = 0.;
@@ -31,10 +25,6 @@ fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
         o += v[i];
     }
     o
-}
-
-fn mean(v: &[f64]) -> f64 {
-    sum(&v) / (v.len() as f64)
 }
 
 pub struct Dataset {
@@ -272,36 +262,10 @@ pub struct GBT {
     models: Vec<Node>,
     params: Params,
     best_iteration: usize,
+    loss: Box<RegLoss>,
 }
 
 impl GBT {
-    fn _calc_l2_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
-        let hessian: Vec<f64> = (0..target.len()).map(|_| 2.).collect();
-        let grad = (0..target.len())
-            .map(|i| 2. * (target[i] - predictions[i]))
-            .collect();
-        (grad, hessian)
-    }
-
-    fn _calc_l2_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
-        let mut errors = Vec::new();
-        for (n_row, &target) in target.iter().enumerate() {
-            let diff = target - predictions[n_row];
-            errors.push(diff.powi(2));
-        }
-        return mean(&errors);
-    }
-
-    /// For now, only L2 loss is supported
-    fn _calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
-        self._calc_l2_loss(target, predictions)
-    }
-
-    /// For now, only L2 loss is supported
-    fn _calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
-        self._calc_l2_gradient(target, predictions)
-    }
-
     fn _build_learner(&self, train: &TrainDataSet, shrinkage_rate: f64) -> Node {
         let depth = 0;
         let indices: Vec<usize> = (0..train.target.len()).collect();
@@ -314,11 +278,12 @@ impl GBT {
         num_boost_round: usize,
         valid_set: Option<&Dataset>,
         early_stopping_rounds: usize,
-    ) -> Self {
+    ) -> GBT {
         let mut o = GBT {
             models: Vec::new(),
             params: (*params).clone(),
             best_iteration: 0,
+            loss: Box::new(RegLoss::default()),
         };
         o.train(train_set, num_boost_round, valid_set, early_stopping_rounds);
         o
@@ -364,7 +329,7 @@ impl GBT {
 
         for iter_cnt in 0..(num_boost_round) {
             let iter_start_time = Instant::now();
-            let (grad, hessian) = self._calc_gradient(&train_set.target, &train_scores);
+            let (grad, hessian) = self.loss.calc_gradient(&train_set.target, &train_scores);
 
             // TODO seems to work, but is it sound?
             let grad = if iter_cnt == 0 {
@@ -393,7 +358,7 @@ impl GBT {
                 for (i, val) in learner.par_predict(&valid_set).into_iter().enumerate() {
                     val_scores[i] += val
                 }
-                let val_loss = self._calc_loss(&valid_set.target, &val_scores);
+                let val_loss = self.loss.calc_loss(&valid_set.target, &val_scores);
 
                 if let Some(best_val_loss_) = best_val_loss {
                     if val_loss < best_val_loss_ || iter_cnt == 0 {

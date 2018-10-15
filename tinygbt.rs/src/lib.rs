@@ -7,7 +7,7 @@ extern crate rand;
 
 mod matrix;
 
-use ord_subset::OrdSubsetSliceExt;
+use ord_subset::{OrdSubsetIterExt, OrdSubsetSliceExt};
 use std::time::Instant;
 
 use rand::random;
@@ -123,6 +123,56 @@ impl Node {
         return sum_indices(grad, indices) / (sum_indices(hessian, indices) + lambda);
     }
 
+    fn calc_gain(
+        train: &TrainDataSet,
+        indices: &[usize],
+        sum_grad: f64,
+        sum_hessian: f64,
+        param: &Params,
+        feature_id: usize,
+    ) -> (usize, f64, f64, Vec<usize>, Vec<usize>) {
+        // sorted_instance_ids = instances[:, feature_id].argsort()
+        let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
+        sorted_instance_ids.sort_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
+
+        let mut grad_left = 0.;
+        let mut hessian_left = 0.;
+        let mut best_gain = -::std::f64::INFINITY;
+        let mut best_idx = 0;
+        let mut best_val = 0.;
+
+        for (j, &nrow) in sorted_instance_ids.iter().enumerate() {
+            grad_left += train.grad[nrow];
+            hessian_left += train.hessian[nrow];
+            let grad_right = sum_grad - grad_left;
+            let hessian_right = sum_hessian - hessian_left;
+            let current_gain = Self::_calc_split_gain(
+                sum_grad,
+                sum_hessian,
+                grad_left,
+                hessian_left,
+                grad_right,
+                hessian_right,
+                param.lambda,
+            );
+
+            if current_gain > best_gain {
+                best_gain = current_gain;
+                best_idx = j;
+                best_val = train.features[(nrow, feature_id)];
+            }
+        }
+
+        let (left_ids, right_ids) = sorted_instance_ids.split_at(best_idx + 1);
+        (
+            feature_id,
+            best_val,
+            best_gain,
+            left_ids.to_vec(),
+            right_ids.to_vec(),
+        )
+    }
+
     /// Exact Greedy Algorithm for Split Finding
     ///  (Refer to Algorithm1 of Reference[1])
     fn build(
@@ -142,49 +192,17 @@ impl Node {
 
         let sum_grad = sum_indices(&train.grad, indices);
         let sum_hessian = sum_indices(&train.hessian, indices);
-        let mut best_gain = -::std::f64::INFINITY;
-        let mut best_feature_id = None;
-        let mut best_val = 0.;
-        let mut best_left_instance_ids = None;
-        let mut best_right_instance_ids = None;
 
-        for feature_id in 0..nfeatures {
-            let mut grad_left = 0.;
-            let mut hessian_left = 0.;
+        let results: Vec<_> = (0..nfeatures)
+            .map(|feature_id| {
+                Self::calc_gain(&train, indices, sum_grad, sum_hessian, &param, feature_id)
+            }).collect();
 
-            // sorted_instance_ids = instances[:, feature_id].argsort()
-            let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
-            sorted_instance_ids.sort_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
-
-            for (j, &nrow) in sorted_instance_ids.iter().enumerate() {
-                grad_left += train.grad[nrow];
-                hessian_left += train.hessian[nrow];
-                let grad_right = sum_grad - grad_left;
-                let hessian_right = sum_hessian - hessian_left;
-                let current_gain = Self::_calc_split_gain(
-                    sum_grad,
-                    sum_hessian,
-                    grad_left,
-                    hessian_left,
-                    grad_right,
-                    hessian_right,
-                    param.lambda,
-                );
-
-                if current_gain > best_gain {
-                    best_gain = current_gain;
-                    best_feature_id = Some(feature_id);
-                    best_val = train.features[(nrow, feature_id)];
-                    let (left_ids, right_ids) = sorted_instance_ids.split_at(j + 1);
-                    best_left_instance_ids = Some(left_ids.to_vec());
-                    best_right_instance_ids = Some(right_ids.to_vec());
-                }
-            }
-        }
-
-        let best_feature_id = best_feature_id.expect("best_feature_id");
-        let best_left_instance_ids = best_left_instance_ids.expect("best_left_instance_ids");
-        let best_right_instance_ids = best_right_instance_ids.expect("best_right_instance_ids");
+        let (best_feature_id, best_val, best_gain, best_left_instance_ids, best_right_instance_ids) =
+            results
+                .into_iter()
+                .ord_subset_max_by_key(|(_, _, gain, _, _)| gain.clone())
+                .expect("Impossible to get the best gain for unknown reason");
 
         if best_gain < param.min_split_gain {
             let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)

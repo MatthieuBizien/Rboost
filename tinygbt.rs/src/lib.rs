@@ -4,10 +4,12 @@
 extern crate core;
 extern crate ord_subset;
 extern crate rand;
+extern crate rayon;
 
 mod matrix;
 
 use ord_subset::{OrdSubsetIterExt, OrdSubsetSliceExt};
+use rayon::prelude::*;
 use std::time::Instant;
 
 use rand::random;
@@ -133,7 +135,8 @@ impl Node {
     ) -> (usize, f64, f64, Vec<usize>, Vec<usize>) {
         // sorted_instance_ids = instances[:, feature_id].argsort()
         let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
-        sorted_instance_ids.sort_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
+        sorted_instance_ids
+            .sort_unstable_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
 
         let mut grad_left = 0.;
         let mut hessian_left = 0.;
@@ -194,6 +197,7 @@ impl Node {
         let sum_hessian = sum_indices(&train.hessian, indices);
 
         let results: Vec<_> = (0..nfeatures)
+            .into_par_iter()
             .map(|feature_id| {
                 Self::calc_gain(&train, indices, sum_grad, sum_hessian, &param, feature_id)
             }).collect();
@@ -257,10 +261,10 @@ impl GBT {
             return None;
         }
         let n_rows = train_set.features.n_rows();
-        let mut scores = Vec::with_capacity(n_rows);
-        for i in 0..n_rows {
-            scores.push(self._predict(&train_set.row(i), models));
-        }
+        let scores: Vec<f64> = (0..n_rows)
+            .into_par_iter()
+            .map(|i| self._predict(&train_set.row(i), models))
+            .collect();
         Some(scores)
     }
 
@@ -272,8 +276,6 @@ impl GBT {
         let labels = &train_set.target;
         let hessian: Vec<f64> = (0..labels.len()).map(|_| 2.).collect();
         if let Some(scores) = scores {
-            // println!("labels {}", labels.len());
-            // println!("scores {}", scores.len());
             let grad = (0..labels.len())
                 .map(|i| 2. * (labels[i] - scores[i]))
                 .collect();

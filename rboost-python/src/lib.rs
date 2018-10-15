@@ -5,77 +5,84 @@
 #[macro_use]
 extern crate pyo3;
 
+use ndarray::Axis;
+use ndarray::{ArrayD, ArrayView1, ArrayView2, ArrayViewD, ArrayViewMutD};
+use numpy::{IntoPyResult, PyArray1, PyArray2, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
+use rboost::Params;
 use std::fs;
 use std::path::PathBuf;
 
 /// Represents a file that can be searched
 #[pyclass]
-struct WordCounter {
-    path: PathBuf,
+struct RBoostRegressor {
+    params: Params,
 }
 
 #[pymethods]
-impl WordCounter {
+impl RBoostRegressor {
     #[new]
-    fn __new__(obj: &PyRawObject, path: String) -> PyResult<()> {
-        obj.init(|_| WordCounter {
-            path: PathBuf::from(path),
-        })
+    fn __new__(
+        obj: &PyRawObject,
+        gamma: Option<f64>,
+        lambda: Option<f64>,
+        learning_rate: Option<f64>,
+        max_depth: Option<usize>,
+        min_split_gain: Option<f64>,
+    ) -> PyResult<()> {
+        let mut params = Params::new();
+        if let Some(gamma) = gamma {
+            params.gamma = gamma;
+        }
+        if let Some(lambda) = lambda {
+            params.lambda = lambda;
+        }
+        if let Some(learning_rate) = learning_rate {
+            params.learning_rate = learning_rate;
+        }
+        if let Some(max_depth) = max_depth {
+            params.max_depth = max_depth;
+        }
+        if let Some(min_split_gain) = min_split_gain {
+            params.min_split_gain = min_split_gain;
+        }
+        obj.init(|_| RBoostRegressor { params: params })
     }
 
     /// Searches for the word, parallelized by rayon
-    fn search(&self, py: Python, search: String) -> PyResult<usize> {
-        let contents = fs::read_to_string(&self.path)?;
-
-        let count =
-            py.allow_threads(move || contents.lines().map(|line| count_line(line, &search)).sum());
-        Ok(count)
+    fn fit(&self, py: Python, x: &PyArray2<f64>, y: &PyArray1<f64>) -> PyResult<f64> {
+        let x = x.as_array()?;
+        let y = y.as_array()?;
+        let target: Vec<f64> = y.iter().map(|e| (*e).clone()).collect();
+        let features: Vec<Vec<f64>> = (0..x.rows())
+            .map(|col| {
+                x.subview(Axis(1), col)
+                    .iter()
+                    .map(|e| (*e).clone())
+                    .collect()
+            }).collect();
+        Ok(y.scalar_sum() + x.scalar_sum())
     }
-
-    /// Searches for a word in a classic sequential fashion
-    fn search_sequential(&self, needle: String) -> PyResult<usize> {
-        let contents = fs::read_to_string(&self.path)?;
-
-        let result = contents.lines().map(|line| count_line(line, &needle)).sum();
-
-        Ok(result)
-    }
-}
-
-fn matches(word: &str, needle: &str) -> bool {
-    let mut needle = needle.chars();
-    for ch in word.chars().skip_while(|ch| !ch.is_alphabetic()) {
-        match needle.next() {
-            None => {
-                return !ch.is_alphabetic();
-            }
-            Some(expect) => {
-                if ch.to_lowercase().next() != Some(expect) {
-                    return false;
-                }
-            }
-        }
-    }
-    return needle.next().is_none();
-}
-
-/// Count the occurences of needle in line, case insensitive
-#[pyfunction]
-fn count_line(line: &str, needle: &str) -> usize {
-    let mut total = 0;
-    for word in line.split(' ') {
-        if matches(word, needle) {
-            total += 1;
-        }
-    }
-    total
 }
 
 #[pymodinit]
 fn rboost_python(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_function!(count_line))?;
-    m.add_class::<WordCounter>()?;
+    #[pyfn(m, "fit")]
+    fn fit_py(x: &PyArray2<f64>, y: &PyArray1<f64>) -> PyResult<f64> {
+        let x = x.as_array()?;
+        let y = y.as_array()?;
+        let target: Vec<f64> = y.iter().map(|e| (*e).clone()).collect();
+        let features: Vec<Vec<f64>> = (0..x.rows())
+            .map(|col| {
+                x.subview(Axis(1), col)
+                    .iter()
+                    .map(|e| (*e).clone())
+                    .collect()
+            }).collect();
+        Ok(y.scalar_sum() + x.scalar_sum())
+    }
+
+    m.add_class::<RBoostRegressor>()?;
 
     Ok(())
 }

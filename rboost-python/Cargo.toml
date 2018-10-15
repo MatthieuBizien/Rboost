@@ -10,7 +10,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 #numpy = { path = "../rust-numpy/"}
-#numpy = { git = "https://github.com/MatthieuBizien/rust-numpy.git"}
-#ndarray = "0.12"
-#rboost = {path = "../rboost"}
-pyo3 = { features = ["extension-module"] }
+# Mandatory until https://github.com/rust-numpy/rust-numpy/pull/73 is resolved
+numpy = { git = "https://github.com/MatthieuBizien/rust-numpy.git"}
+ndarray = "0.12"
+rboost = {path = "../rboost"}
+pyo3 = {version = "0.4.1", features = ["extension-module"] }

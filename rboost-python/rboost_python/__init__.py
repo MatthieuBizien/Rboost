@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from .rboost_python import WordCounter, count_line
 
-__all__ = ["WordCounter", "count_line", "search_py"]
+__all__ = ["RBoostRegressor", "fit"]
 
 
 def search_py(path, needle):

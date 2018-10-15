@@ -1,0 +1,15 @@
+[package]
+name = "rboost-python"
+version = "0.1.0"
+authors = ["Matthieu Bizien <matthieu@databiz.io>"]
+edition = "2018"
+
+[dependencies]
+#numpy = { path = "../rust-numpy/"}
+numpy = { git = "https://github.com/MatthieuBizien/rust-numpy.git"}
+ndarray = "0.12"
+rboost = {path = "../rboost"}
+
+[dependencies.pyo3]
+version = "0.4.1"
+features = ["extension-module"]

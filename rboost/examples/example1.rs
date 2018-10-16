@@ -1,6 +1,8 @@
+extern crate cpuprofiler;
 extern crate failure;
 extern crate rboost;
 
+use cpuprofiler::PROFILER;
 use failure::Error;
 use rboost::{ColumnMajorMatrix, Dataset, Params, GBT};
 
@@ -33,8 +35,9 @@ fn main() {
         max_depth: 3,
         min_split_gain: 0.1,
     };
-
+    PROFILER.lock().unwrap().start("./my-prof.profile").unwrap();
     let gbt = GBT::build(&params, &train, 100, Some(&test), 10);
+    PROFILER.lock().unwrap().stop().unwrap();
     let yhat: Vec<f64> = (0..test.features.n_rows())
         .map(|i| gbt.predict(&test.row(i)))
         .collect();

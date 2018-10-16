@@ -12,3 +12,4 @@ rayon = "1.0"
 
 [dev-dependencies]
 failure = "0.1.2"
+cpuprofiler = "0.0.3"

@@ -3,7 +3,7 @@ pub trait Loss {
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64;
 }
 
-fn sum(v: &[f64]) -> f64 {
+pub fn sum(v: &[f64]) -> f64 {
     let mut o = 0.;
     for e in v.iter() {
         o += *e;
@@ -11,7 +11,7 @@ fn sum(v: &[f64]) -> f64 {
     o
 }
 
-fn mean(v: &[f64]) -> f64 {
+pub fn mean(v: &[f64]) -> f64 {
     sum(&v) / (v.len() as f64)
 }
 

@@ -12,6 +12,7 @@ mod matrix;
 
 use ord_subset::{OrdSubsetIterExt, OrdSubsetSliceExt};
 use rayon::prelude::*;
+use std::f64::INFINITY;
 use std::time::Instant;
 
 pub use crate::losses::*;
@@ -19,11 +20,14 @@ use rand::random;
 
 pub use crate::matrix::{ColumnMajorMatrix, StridedVecView};
 
+type BinType = u32;
+
 pub static DEFAULT_GAMMA: f64 = 0.;
 pub static DEFAULT_LAMBDA: f64 = 1.;
 pub static DEFAULT_LEARNING_RATE: f64 = 0.8;
 pub static DEFAULT_MAX_DEPTH: usize = 3;
 pub static DEFAULT_MIN_SPLIT_GAIN: f64 = 0.1;
+pub static DEFAULT_N_BINS: usize = 256;
 
 fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
     let mut o = 0.;
@@ -71,6 +75,33 @@ impl Dataset {
             }).collect();
         ColumnMajorMatrix::from_columns(columns)
     }
+
+    pub fn bin_features(
+        sorted_features: &ColumnMajorMatrix<usize>,
+        n_bins: usize,
+    ) -> (ColumnMajorMatrix<BinType>, Vec<usize>) {
+        let x: Vec<_> = sorted_features
+            .columns()
+            .map(|column| {
+                let max: usize = 1 + *column.iter().max().expect("no data in col");
+                let n_bins: usize = max.min(n_bins);
+                assert!(n_bins < (BinType::max_value()) as usize);
+                // Then we bins the features
+                let bins: Vec<BinType> = column
+                    .iter()
+                    .map(|&e| (e * n_bins / max) as BinType)
+                    .collect();
+                (bins, n_bins)
+            }).collect();
+        let mut columns = Vec::with_capacity(x.len());
+        let mut n_bins = Vec::with_capacity(x.len());
+        for (col, n_bin) in x.into_iter() {
+            columns.push(col);
+            n_bins.push(n_bin);
+        }
+        let columns = ColumnMajorMatrix::from_columns(columns);
+        (columns, n_bins)
+    }
 }
 
 struct TrainDataSet<'a> {
@@ -79,6 +110,8 @@ struct TrainDataSet<'a> {
     pub target: &'a Vec<f64>,
     pub grad: Vec<f64>,
     pub hessian: Vec<f64>,
+    bins: &'a ColumnMajorMatrix<BinType>,
+    n_bins: &'a Vec<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -88,6 +121,7 @@ pub struct Params {
     pub learning_rate: f64,
     pub max_depth: usize,
     pub min_split_gain: f64,
+    pub n_bins: usize,
 }
 
 impl Params {
@@ -98,6 +132,7 @@ impl Params {
             learning_rate: DEFAULT_LEARNING_RATE,
             max_depth: DEFAULT_MAX_DEPTH,
             min_split_gain: DEFAULT_MIN_SPLIT_GAIN,
+            n_bins: DEFAULT_N_BINS,
         }
     }
 }
@@ -136,7 +171,7 @@ impl Node {
         return sum_indices(grad, indices) / (sum_indices(hessian, indices) + lambda);
     }
 
-    fn calc_gain(
+    fn calc_gain_direct(
         train: &TrainDataSet,
         indices: &[usize],
         sum_grad: f64,
@@ -194,6 +229,70 @@ impl Node {
         )
     }
 
+    fn calc_gain_bins(
+        train: &TrainDataSet,
+        indices: &[usize],
+        sum_grad: f64,
+        sum_hessian: f64,
+        param: &Params,
+        feature_id: usize,
+    ) -> (usize, f64, f64, Vec<usize>, Vec<usize>) {
+        let n_bin = train.n_bins[feature_id];
+        let mut grads: Vec<_> = (0..n_bin).map(|e| 0.).collect();
+        let mut hessians: Vec<_> = (0..n_bin).map(|e| 0.).collect();
+
+        for &i in indices {
+            let bin = train.bins[(i, feature_id)] as usize;
+            grads[bin] += train.grad[i];
+            hessians[bin] += train.hessian[i];
+        }
+
+        // We initialize at the first value
+        let mut grad_left = grads[0];
+        let mut hessian_left = hessians[0];
+        let mut best_gain =
+            Self::_calc_split_gain(sum_grad, sum_hessian, grad_left, hessian_left, param.lambda);
+        let mut best_bin = 0;
+
+        for bin in 1..n_bin {
+            grad_left += grads[bin];
+            hessian_left += hessians[bin];
+
+            let current_gain = Self::_calc_split_gain(
+                sum_grad,
+                sum_hessian,
+                grad_left,
+                hessian_left,
+                param.lambda,
+            );
+
+            if current_gain > best_gain {
+                best_gain = current_gain;
+                best_bin = bin;
+            }
+        }
+
+        let mut left_ids = Vec::new();
+        let mut right_ids = Vec::new();
+        let mut best_val = INFINITY;
+        for &i in indices {
+            let bin = train.bins[(i, feature_id)] as usize;
+            if bin < best_bin {
+                left_ids.push(i);
+            } else {
+                right_ids.push(i);
+                best_val = best_val.min(train.features[(i, feature_id)]);
+            }
+        }
+        (
+            feature_id,
+            best_val,
+            best_gain,
+            left_ids.to_vec(),
+            right_ids.to_vec(),
+        )
+    }
+
     /// Exact Greedy Algorithm for Split Finding
     ///  (Refer to Algorithm1 of Reference[1])
     fn build(
@@ -214,11 +313,23 @@ impl Node {
         let sum_grad = sum_indices(&train.grad, indices);
         let sum_hessian = sum_indices(&train.hessian, indices);
 
-        let results: Vec<_> = (0..nfeatures)
-            .into_par_iter()
-            .map(|feature_id| {
-                Self::calc_gain(&train, indices, sum_grad, sum_hessian, &param, feature_id)
-            }).collect();
+        let get_results_bins = |feature_id| {
+            Self::calc_gain_bins(&train, indices, sum_grad, sum_hessian, &param, feature_id)
+        };
+        let get_results_direct = |feature_id| {
+            Self::calc_gain_direct(&train, indices, sum_grad, sum_hessian, &param, feature_id)
+        };
+        let results: Vec<_> = if param.n_bins > 0 {
+            (0..nfeatures)
+                .into_par_iter()
+                .map(get_results_bins)
+                .collect()
+        } else {
+            (0..nfeatures)
+                .into_par_iter()
+                .map(get_results_direct)
+                .collect()
+        };
 
         let (best_feature_id, best_val, best_gain, best_left_instance_ids, best_right_instance_ids) =
             results
@@ -332,6 +443,7 @@ impl GBT {
         let train_start_time = Instant::now();
 
         let sorted_features = train_set.sort_features();
+        let (bins, n_bins) = Dataset::bin_features(&sorted_features, self.params.n_bins);
         println!(
             "Features sorted in {:.03}s",
             train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
@@ -362,6 +474,8 @@ impl GBT {
                 sorted_features: &sorted_features,
                 grad,
                 hessian,
+                bins: &bins,
+                n_bins: &n_bins,
             };
             let learner = self._build_learner(&train, shrinkage_rate);
             if iter_cnt > 0 {

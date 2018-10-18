@@ -40,6 +40,54 @@ impl Loss for RegLoss {
             let diff = target - predictions[n_row];
             errors.push(diff.powi(2));
         }
-        return mean(&errors);
+        return sum(&errors);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    /// Clone the vector and increase a given index
+    fn inc_vec(v: &Vec<f64>, i: usize, eps: f64) -> Vec<f64> {
+        let mut v = v.clone();
+        v[i] += eps;
+        v
+    }
+
+    fn assert_close(a: f64, b: f64, delta: f64) {
+        assert!(
+            (a - b).abs() <= delta,
+            "Difference = {:.6} > {:.6} too important between {:.6} and {:.6}",
+            a - b,
+            delta,
+            a,
+            b
+        );
+    }
+
+    #[test]
+    fn test_reg_loss() {
+        let target = vec![0.1, 0.4, 1.3, 0.2];
+        let predictions = vec![0.1, 0.4, 1.0, 0.0];
+        let eps = 1e-5;
+        let loss_reg = RegLoss::default();
+
+        let loss = loss_reg.calc_loss(&target, &predictions);
+
+        let (grad, hessian) = loss_reg.calc_gradient(&target, &predictions);
+        for i in 0..target.len() {
+            // Test gradient
+            // f'(x) = (f(x+eps) - f(x-eps)) / (2*eps)
+            let l_plus = loss_reg.calc_loss(&inc_vec(&target, i, eps), &predictions);
+            let l_minus = loss_reg.calc_loss(&inc_vec(&target, i, -eps), &predictions);
+            let grad_emp = (l_plus - l_minus) / (2. * eps);
+            assert_close(grad[i], grad_emp, 1e-5);
+
+            // Test hessian
+            // f"(x) = (f'(x+eps/2) - f'(x-eps/2)) / (2*eps/2)
+            //       = (f(x+eps)-f(x) - f(x) + f(x-eps)) / (eps*eps)
+            let hessian_emp = (l_plus + l_minus - 2. * loss) / eps.powi(2);
+            assert_close(hessian[i], hessian_emp, 1e-5);
+        }
     }
 }

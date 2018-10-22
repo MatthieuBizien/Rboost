@@ -22,6 +22,15 @@ fn parse_tsv(data: &str) -> Result<Dataset, Error> {
     Ok(Dataset { features, target })
 }
 
+fn rmse(target: &[f64], yhat: &[f64]) -> f64 {
+    let rmse: f64 = yhat
+        .iter()
+        .zip(target.iter())
+        .map(|(&a, &b)| (a - b).powi(2))
+        .sum();
+    (rmse / target.len() as f64).sqrt()
+}
+
 fn main() {
     let train = include_str!("../data/regression.train");
     let train = parse_tsv(train).expect("Train data");
@@ -39,14 +48,12 @@ fn main() {
     PROFILER.lock().unwrap().start("./my-prof.profile").unwrap();
     let gbt = GBT::build(&params, &train, 100, Some(&test), 100);
     PROFILER.lock().unwrap().stop().unwrap();
+    let yhat: Vec<f64> = (0..train.features.n_rows())
+        .map(|i| gbt.predict(&train.row(i)))
+        .collect();
+    println!("RMSE train {:.8}", rmse(&train.target, &yhat));
     let yhat: Vec<f64> = (0..test.features.n_rows())
         .map(|i| gbt.predict(&test.row(i)))
         .collect();
-    let rmse: f64 = yhat
-        .iter()
-        .zip(test.target.iter())
-        .map(|(&a, &b)| (a - b).powi(2))
-        .sum();
-    let rmse = (rmse / test.target.len() as f64).sqrt();
-    println!("RMSE Test {:.8}", rmse);
+    println!("RMSE Test {:.8}", rmse(&test.target, &yhat));
 }

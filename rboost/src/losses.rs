@@ -44,6 +44,44 @@ impl Loss for RegLoss {
     }
 }
 
+/// Binary loss
+pub struct BinaryLogLoss {
+    // Nothing inside
+}
+
+impl Default for BinaryLogLoss {
+    fn default() -> Self {
+        BinaryLogLoss {}
+    }
+}
+
+impl Loss for BinaryLogLoss {
+    fn calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        let mut hessian: Vec<f64> = Vec::with_capacity(target.len());
+        let mut grad = Vec::with_capacity(target.len());
+        for (&target, &prediction) in target.iter().zip(predictions.iter()) {
+            let odd = 1. / (1. + prediction.exp());
+            grad.push(target + odd - 1.);
+            hessian.push(odd.powi(2) - odd);
+        }
+        (grad, hessian)
+    }
+
+    fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
+        // proba p = 1 / (1 + exp(-x))
+        // Loss = P * log(p) + (1-P) * log(1-p)
+        //      = -P*log(1+exp(-x)) + (1-P) * log(exp(-x)) - (1-P) *  log(1+exp(-x))
+        //      = - log(1+exp(-x)) + (1-P) * -x
+        let mut errors = Vec::new();
+        for (&target, &x) in target.iter().zip(predictions.iter()) {
+            let proba = 1. / (1. + (-x).exp());
+            let loss = target * proba.max(1e-8).ln() + (1. - target) * (1. - proba).max(1e-8).ln();
+            errors.push(loss);
+        }
+        return sum(&errors);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,6 +118,35 @@ mod tests {
             // f'(x) = (f(x+eps) - f(x-eps)) / (2*eps)
             let l_plus = loss_reg.calc_loss(&inc_vec(&target, i, eps), &predictions);
             let l_minus = loss_reg.calc_loss(&inc_vec(&target, i, -eps), &predictions);
+            let grad_emp = (l_plus - l_minus) / (2. * eps);
+            assert_close(grad[i], grad_emp, 1e-5);
+
+            // Test hessian
+            // f"(x) = (f'(x+eps/2) - f'(x-eps/2)) / (2*eps/2)
+            //       = (f(x+eps)-f(x) - f(x) + f(x-eps)) / (eps*eps)
+            let hessian_emp = (l_plus + l_minus - 2. * loss) / eps.powi(2);
+            assert_close(hessian[i], hessian_emp, 1e-5);
+        }
+    }
+
+    //noinspection RsApproxConstant
+    #[test]
+    fn test_binary_loss() {
+        let target = vec![1., 1., 0., 1.];
+        let predictions = vec![0.1, 0.4, 0.9, 0.3];
+        let eps = 1e-5;
+        let loss_reg = BinaryLogLoss::default();
+
+        let loss = loss_reg.calc_loss(&target, &predictions);
+        let expected = -2.9529210316741383;
+        assert_close(loss, expected, 1e-3);
+
+        let (grad, hessian) = loss_reg.calc_gradient(&target, &predictions);
+        for i in 0..target.len() {
+            // Test gradient
+            // f'(x) = (f(x+eps) - f(x-eps)) / (2*eps)
+            let l_plus = loss_reg.calc_loss(&target, &inc_vec(&predictions, i, eps));
+            let l_minus = loss_reg.calc_loss(&target, &inc_vec(&predictions, i, -eps));
             let grad_emp = (l_plus - l_minus) / (2. * eps);
             assert_close(grad[i], grad_emp, 1e-5);
 

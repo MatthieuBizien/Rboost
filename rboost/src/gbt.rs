@@ -75,13 +75,6 @@ impl GBT {
         for iter_cnt in 0..(num_boost_round) {
             let (grad, hessian) = self.loss.calc_gradient(&train_set.target, &train_scores);
 
-            // TODO seems to work, but is it sound?
-            let grad = if iter_cnt == 0 {
-                grad.into_iter().map(|i| i * 0.5).collect()
-            } else {
-                grad
-            };
-
             let train = TrainDataSet {
                 features: &train_set.features,
                 target: &train_set.target,
@@ -129,7 +122,8 @@ impl GBT {
 
         self.best_iteration = best_iteration;
         println!(
-            "Training finished. Elapsed: {:.2} secs",
+            "Training of {} trees finished. Elapsed: {:.2} secs",
+            self.models.len(),
             train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
         );
     }

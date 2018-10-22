@@ -4,6 +4,7 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
 
 fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
+    debug_assert!(indices.len() != 0);
     let mut o = 0.;
     for &i in indices {
         o += v[i];
@@ -52,11 +53,15 @@ impl Node {
         sum_hessian: f64,
         param: &Params,
         feature_id: usize,
-    ) -> (usize, f64, f64, Vec<usize>, Vec<usize>) {
+    ) -> Option<(usize, f64, f64, Vec<usize>, Vec<usize>)> {
         // sorted_instance_ids = instances[:, feature_id].argsort()
         let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
         sorted_instance_ids
             .sort_unstable_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
+
+        if sorted_instance_ids.first() == sorted_instance_ids.last() {
+            return None;
+        }
 
         // We initialize at the first value
         let mut grad_left = train.grad[sorted_instance_ids[0]];
@@ -67,7 +72,11 @@ impl Node {
         let mut best_val = train.features[(0, feature_id)];
         let mut last_val = train.features[(0, feature_id)];
 
-        for (j, &nrow) in sorted_instance_ids.iter().skip(1).enumerate() {
+        for (j, &nrow) in sorted_instance_ids[..sorted_instance_ids.len() - 2]
+            .iter()
+            .skip(1)
+            .enumerate()
+        {
             grad_left += train.grad[nrow];
             hessian_left += train.hessian[nrow];
 
@@ -94,13 +103,13 @@ impl Node {
         }
 
         let (left_ids, right_ids) = sorted_instance_ids.split_at(best_idx + 1);
-        (
+        Some((
             feature_id,
             best_val,
             best_gain,
             left_ids.to_vec(),
             right_ids.to_vec(),
-        )
+        ))
     }
 
     fn calc_gain_bins(
@@ -110,25 +119,32 @@ impl Node {
         sum_hessian: f64,
         param: &Params,
         feature_id: usize,
-    ) -> (usize, f64, f64, Vec<usize>, Vec<usize>) {
+    ) -> Option<(usize, f64, f64, Vec<usize>, Vec<usize>)> {
         let n_bin = train.n_bins[feature_id];
         let mut grads: Vec<_> = (0..n_bin).map(|_| 0.).collect();
         let mut hessians: Vec<_> = (0..n_bin).map(|_| 0.).collect();
+
+        let mut min_bin = n_bin; // placeholder value: if it don't change we have no data
+        let mut max_bin = 0;
 
         for &i in indices {
             let bin = train.bins[(i, feature_id)] as usize;
             grads[bin] += train.grad[i];
             hessians[bin] += train.hessian[i];
+            min_bin = min_bin.min(bin);
+            max_bin = max_bin.max(bin);
+        }
+        if max_bin == min_bin || min_bin == n_bin {
+            // Not possible to split if there is just one bin
+            return None;
         }
 
         // We initialize at the first value
-        let mut grad_left = grads[0];
-        let mut hessian_left = hessians[0];
-        let mut best_gain =
-            Self::_calc_split_gain(sum_grad, sum_hessian, grad_left, hessian_left, param.lambda);
+        let mut grad_left = 0.;
+        let mut hessian_left = 0.;
+        let mut best_gain = -INFINITY;
         let mut best_bin = 0;
-
-        for bin in 1..n_bin {
+        for bin in min_bin..max_bin {
             grad_left += grads[bin];
             hessian_left += hessians[bin];
 
@@ -148,23 +164,26 @@ impl Node {
 
         let mut left_ids = Vec::new();
         let mut right_ids = Vec::new();
-        let mut best_val = INFINITY;
+        let mut best_val_left = -INFINITY;
+        let mut best_val_right = INFINITY;
         for &i in indices {
             let bin = train.bins[(i, feature_id)] as usize;
-            if bin < best_bin {
+            if bin <= best_bin {
                 left_ids.push(i);
+                best_val_left = best_val_left.max(train.features[(i, feature_id)]);
             } else {
                 right_ids.push(i);
-                best_val = best_val.min(train.features[(i, feature_id)]);
+                best_val_right = best_val_right.min(train.features[(i, feature_id)]);
             }
         }
-        (
+        let best_val = (best_val_left + best_val_right) / 2.;
+        Some((
             feature_id,
             best_val,
             best_gain,
             left_ids.to_vec(),
             right_ids.to_vec(),
-        )
+        ))
     }
 
     /// Exact Greedy Algorithm for Split Finding
@@ -178,10 +197,14 @@ impl Node {
     ) -> Node {
         let nfeatures = train.features.n_cols() as usize;
 
-        if depth > param.max_depth {
+        let self_leaf = || {
             let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)
                 * shrinkage_rate;
-            return Node::Leaf(LeafNode { val });
+            Node::Leaf(LeafNode { val })
+        };
+
+        if depth > param.max_depth {
+            return self_leaf();
         }
 
         let sum_grad = sum_indices(&train.grad, indices);
@@ -196,25 +219,27 @@ impl Node {
         let results: Vec<_> = if param.n_bins > 0 {
             (0..nfeatures)
                 .into_par_iter()
-                .map(get_results_bins)
+                .filter_map(get_results_bins)
                 .collect()
         } else {
             (0..nfeatures)
                 .into_par_iter()
-                .map(get_results_direct)
+                .filter_map(get_results_direct)
                 .collect()
         };
 
+        let best_result = results
+            .into_iter()
+            .ord_subset_max_by_key(|(_, _, gain, _, _)| gain.clone());
+
         let (best_feature_id, best_val, best_gain, best_left_instance_ids, best_right_instance_ids) =
-            results
-                .into_iter()
-                .ord_subset_max_by_key(|(_, _, gain, _, _)| gain.clone())
-                .expect("Impossible to get the best gain for unknown reason");
+            match best_result {
+                Some(e) => e,
+                None => return self_leaf(),
+            };
 
         if best_gain < param.min_split_gain {
-            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)
-                * shrinkage_rate;
-            return Node::Leaf(LeafNode { val });
+            return self_leaf();
         }
 
         let get_child = |instance_ids: Vec<usize>| {

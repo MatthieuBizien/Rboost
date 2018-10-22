@@ -28,6 +28,15 @@ pub(crate) enum Node {
     Leaf(LeafNode),
 }
 
+/// Store the result of a successful split on a node
+struct SplitResult {
+    feature_id: usize,
+    best_val: f64,
+    best_gain: f64,
+    left_indices: Vec<usize>,
+    right_indices: Vec<usize>,
+}
+
 impl Node {
     ///  Loss reduction
     /// (Refer to Eq7 of Reference[1])
@@ -53,7 +62,7 @@ impl Node {
         sum_hessian: f64,
         param: &Params,
         feature_id: usize,
-    ) -> Option<(usize, f64, f64, Vec<usize>, Vec<usize>)> {
+    ) -> Option<SplitResult> {
         // sorted_instance_ids = instances[:, feature_id].argsort()
         let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
         sorted_instance_ids
@@ -102,14 +111,14 @@ impl Node {
             }
         }
 
-        let (left_ids, right_ids) = sorted_instance_ids.split_at(best_idx + 1);
-        Some((
+        let (left_indices, right_indices) = sorted_instance_ids.split_at(best_idx + 1);
+        Some(SplitResult {
             feature_id,
             best_val,
             best_gain,
-            left_ids.to_vec(),
-            right_ids.to_vec(),
-        ))
+            left_indices: left_indices.to_vec(),
+            right_indices: right_indices.to_vec(),
+        })
     }
 
     fn calc_gain_bins(
@@ -119,7 +128,7 @@ impl Node {
         sum_hessian: f64,
         param: &Params,
         feature_id: usize,
-    ) -> Option<(usize, f64, f64, Vec<usize>, Vec<usize>)> {
+    ) -> Option<SplitResult> {
         let n_bin = train.n_bins[feature_id];
         let mut grads: Vec<_> = (0..n_bin).map(|_| 0.).collect();
         let mut hessians: Vec<_> = (0..n_bin).map(|_| 0.).collect();
@@ -162,28 +171,28 @@ impl Node {
             }
         }
 
-        let mut left_ids = Vec::new();
-        let mut right_ids = Vec::new();
+        let mut left_indices = Vec::new();
+        let mut right_indices = Vec::new();
         let mut best_val_left = -INFINITY;
         let mut best_val_right = INFINITY;
         for &i in indices {
             let bin = train.bins[(i, feature_id)] as usize;
             if bin <= best_bin {
-                left_ids.push(i);
+                left_indices.push(i);
                 best_val_left = best_val_left.max(train.features[(i, feature_id)]);
             } else {
-                right_ids.push(i);
+                right_indices.push(i);
                 best_val_right = best_val_right.min(train.features[(i, feature_id)]);
             }
         }
         let best_val = (best_val_left + best_val_right) / 2.;
-        Some((
+        Some(SplitResult {
             feature_id,
             best_val,
             best_gain,
-            left_ids.to_vec(),
-            right_ids.to_vec(),
-        ))
+            left_indices: left_indices.to_vec(),
+            right_indices: right_indices.to_vec(),
+        })
     }
 
     /// Exact Greedy Algorithm for Split Finding
@@ -216,7 +225,7 @@ impl Node {
         let get_results_direct = |feature_id| {
             Self::calc_gain_direct(&train, indices, sum_grad, sum_hessian, &param, feature_id)
         };
-        let results: Vec<_> = if param.n_bins > 0 {
+        let results: Vec<SplitResult> = if param.n_bins > 0 {
             (0..nfeatures)
                 .into_par_iter()
                 .filter_map(get_results_bins)
@@ -230,15 +239,13 @@ impl Node {
 
         let best_result = results
             .into_iter()
-            .ord_subset_max_by_key(|(_, _, gain, _, _)| gain.clone());
+            .ord_subset_max_by_key(|result| result.best_gain);
+        let best_result: SplitResult = match best_result {
+            Some(e) => e,
+            None => return self_leaf(),
+        };
 
-        let (best_feature_id, best_val, best_gain, best_left_instance_ids, best_right_instance_ids) =
-            match best_result {
-                Some(e) => e,
-                None => return self_leaf(),
-            };
-
-        if best_gain < param.min_split_gain {
+        if best_result.best_gain < param.min_split_gain {
             return self_leaf();
         }
 
@@ -252,14 +259,14 @@ impl Node {
             ))
         };
 
-        let left_child = get_child(best_left_instance_ids);
-        let right_child = get_child(best_right_instance_ids);
+        let left_child = get_child(best_result.left_indices);
+        let right_child = get_child(best_result.right_indices);
 
         Node::Split(SplitNode {
             left_child,
             right_child,
-            split_feature_id: best_feature_id,
-            split_val: best_val,
+            split_feature_id: best_result.feature_id,
+            split_val: best_result.best_val,
         })
     }
 

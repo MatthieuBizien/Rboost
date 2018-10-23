@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::{Dataset, Loss, Node, Params, RegLoss, StridedVecView, TrainDataSet};
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT {
     models: Vec<Node>,
     params: Params,

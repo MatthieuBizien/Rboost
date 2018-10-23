@@ -6,6 +6,8 @@ extern crate core;
 extern crate ord_subset;
 extern crate rand;
 extern crate rayon;
+#[macro_use]
+extern crate serde_derive;
 
 mod data;
 mod gbt;
@@ -28,7 +30,7 @@ pub static DEFAULT_MAX_DEPTH: usize = 3;
 pub static DEFAULT_MIN_SPLIT_GAIN: f64 = 0.1;
 pub static DEFAULT_N_BINS: usize = 256;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Params {
     pub gamma: f64,
     pub lambda: f64,

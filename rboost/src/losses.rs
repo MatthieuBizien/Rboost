@@ -15,6 +15,7 @@ pub fn mean(v: &[f64]) -> f64 {
     sum(&v) / (v.len() as f64)
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RegLoss {
     // Nothing inside
 }
@@ -45,6 +46,7 @@ impl Loss for RegLoss {
 }
 
 /// Binary loss
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BinaryLogLoss {
     // Nothing inside
 }

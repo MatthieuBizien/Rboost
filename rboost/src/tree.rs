@@ -12,6 +12,7 @@ fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
     o
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct SplitNode {
     left_child: Box<Node>,
     right_child: Box<Node>,
@@ -19,10 +20,12 @@ pub(crate) struct SplitNode {
     split_val: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct LeafNode {
     val: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) enum Node {
     Split(SplitNode),
     Leaf(LeafNode),

@@ -81,37 +81,36 @@ impl Node {
         let mut best_val = train.features[(0, feature_id)];
         let mut last_val = train.features[(0, feature_id)];
 
-        for (j, &nrow) in sorted_instance_ids[..sorted_instance_ids.len() - 2]
+        // The potential split is before the current value, so we have to skip the first
+        for (idx, &nrow) in sorted_instance_ids[..sorted_instance_ids.len()]
             .iter()
-            .skip(1)
             .enumerate()
+            .skip(1)
         {
-            grad_left += train.grad[nrow];
-            hessian_left += train.hessian[nrow];
-
             // We can only split when the value change
             let val = train.features[(nrow, feature_id)];
-            if val == last_val {
-                continue;
+            if val != last_val {
+                let current_gain = Self::_calc_split_gain(
+                    sum_grad,
+                    sum_hessian,
+                    grad_left,
+                    hessian_left,
+                    param.lambda,
+                );
+
+                if current_gain > best_gain {
+                    best_gain = current_gain;
+                    best_idx = idx;
+                    best_val = (val + last_val) / 2.;
+                }
             }
+
             last_val = val;
-
-            let current_gain = Self::_calc_split_gain(
-                sum_grad,
-                sum_hessian,
-                grad_left,
-                hessian_left,
-                param.lambda,
-            );
-
-            if current_gain > best_gain {
-                best_gain = current_gain;
-                best_idx = j;
-                best_val = val;
-            }
+            grad_left += train.grad[nrow];
+            hessian_left += train.hessian[nrow];
         }
 
-        let (left_indices, right_indices) = sorted_instance_ids.split_at(best_idx + 1);
+        let (left_indices, right_indices) = sorted_instance_ids.split_at(best_idx);
         Some(SplitResult {
             feature_id,
             best_val,
@@ -212,7 +211,7 @@ impl Node {
             Node::Leaf(LeafNode { val })
         };
 
-        if depth > param.max_depth {
+        if depth >= param.max_depth {
             return self_leaf();
         }
 
@@ -272,14 +271,15 @@ impl Node {
 
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {
         match &self {
-            Node::Split(node) => {
-                if features[node.split_feature_id] <= node.split_val {
-                    node.left_child.predict(&features)
+            Node::Split(split) => {
+                let val = features[split.split_feature_id];
+                if val <= split.split_val {
+                    split.left_child.predict(&features)
                 } else {
-                    node.right_child.predict(&features)
+                    split.right_child.predict(&features)
                 }
             }
-            Node::Leaf(node) => node.val,
+            Node::Leaf(leaf) => leaf.val,
         }
     }
 

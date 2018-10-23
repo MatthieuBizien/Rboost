@@ -6,6 +6,11 @@
 # More information here https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 rboost/Cargo.lock
 
+**/example1.csv
+**/example1.json
+**/example1.profile
+
+
 venv/
 
 **/*.pyc

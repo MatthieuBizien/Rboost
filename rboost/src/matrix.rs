@@ -1,5 +1,7 @@
 use core::ops::Index;
 
+/// View of an item every stride on a collection of data.
+/// Starts at start, ends at the end.
 pub struct StridedVecView<'a, A: 'a> {
     pub data: &'a [A],
     pub start: usize,
@@ -28,6 +30,14 @@ impl<'a, A: 'a> Index<usize> for StridedVecView<'a, A> {
     type Output = A;
     fn index(&self, pos: usize) -> &A {
         &self.data[self.start + pos * self.stride]
+    }
+}
+
+impl<'a, A: 'a> StridedVecView<'a, A> {
+    pub fn iter(&'a self) -> impl Iterator<Item = &A> {
+        let n_iter = self.data.len() / self.stride;
+        //(0..n_iter).map(move |pos| &self[pos])
+        (0..n_iter).map(move |pos| &self[pos])
     }
 }
 
@@ -148,6 +158,13 @@ mod tests {
         assert_eq!(matrix.row(0)[1], 4.);
         assert_eq!(matrix.row(1)[1], 5.);
         assert_eq!(matrix.row(2)[1], 6.);
+
+        let row0: Vec<f64> = matrix.row(0).iter().map(|&e|e.clone()).collect();
+        let row1: Vec<f64> = matrix.row(1).iter().map(|&e|e.clone()).collect();
+        let row2: Vec<f64> = matrix.row(2).iter().map(|&e|e.clone()).collect();
+        assert_eq!(row0, vec![1., 4.]);
+        assert_eq!(row1, vec![2., 5.]);
+        assert_eq!(row2, vec![3., 6.]);
     }
 
     #[test]

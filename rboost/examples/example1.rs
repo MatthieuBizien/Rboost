@@ -6,7 +6,7 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use failure::Error;
-use rboost::{ColumnMajorMatrix, Dataset, Params, GBT};
+use rboost::{ColumnMajorMatrix, Dataset, Params, RegLoss, GBT};
 use std::fs::File;
 use std::io::Write;
 
@@ -56,7 +56,7 @@ fn main() {
         .unwrap()
         .start("./example1.profile")
         .unwrap();
-    let gbt = GBT::build(&params, &train, 1000, Some(&test), 1000);
+    let gbt = GBT::build(&params, &train, 1000, Some(&test), 1000, RegLoss::default());
     PROFILER.lock().unwrap().stop().unwrap();
 
     let yhat_train: Vec<f64> = (0..train.features.n_rows())

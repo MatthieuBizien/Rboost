@@ -1,3 +1,4 @@
+use crate::losses::Loss;
 use crate::{ColumnMajorMatrix, StridedVecView};
 use ord_subset::OrdSubsetSliceExt;
 
@@ -72,10 +73,18 @@ impl Dataset {
 
 pub(crate) struct TrainDataSet<'a> {
     pub features: &'a ColumnMajorMatrix<f64>,
-    pub sorted_features: &'a ColumnMajorMatrix<usize>,
     pub target: &'a Vec<f64>,
     pub grad: Vec<f64>,
     pub hessian: Vec<f64>,
-    pub bins: &'a ColumnMajorMatrix<BinType>,
-    pub n_bins: &'a Vec<usize>,
+    pub sorted_features: ColumnMajorMatrix<usize>,
+    pub bins: ColumnMajorMatrix<BinType>,
+    pub n_bins: Vec<usize>,
+}
+
+impl<'a> TrainDataSet<'a> {
+    pub(crate) fn update_grad_hessian(&mut self, loss: &impl Loss, predictions: &[f64]) {
+        let (grad, hessian) = loss.calc_gradient(&self.target, &predictions);
+        self.grad = grad;
+        self.hessian = hessian;
+    }
 }

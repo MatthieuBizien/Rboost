@@ -3,26 +3,27 @@ use std::time::Instant;
 use crate::{Dataset, Loss, Node, Params, RegLoss, StridedVecView, TrainDataSet};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GBT {
+pub struct GBT<L: Loss> {
     models: Vec<Node>,
     params: Params,
     best_iteration: usize,
-    loss: Box<RegLoss>,
+    loss: L,
 }
 
-impl GBT {
+impl<L: Loss> GBT<L> {
     pub fn build(
         params: &Params,
         train_set: &Dataset,
         num_boost_round: usize,
         valid_set: Option<&Dataset>,
         early_stopping_rounds: usize,
-    ) -> GBT {
+        loss: L,
+    ) -> GBT<L> {
         let mut o = GBT {
             models: Vec::new(),
             params: (*params).clone(),
             best_iteration: 0,
-            loss: Box::new(RegLoss::default()),
+            loss: loss,
         };
         o.train(train_set, num_boost_round, valid_set, early_stopping_rounds);
         o
@@ -72,19 +73,17 @@ impl GBT {
         let mut tree_predictions: Vec<_> = (0..train_set.target.len()).map(|_| 0.).collect();
 
         let indices: Vec<usize> = (0..train_set.target.len()).collect();
-
+        let mut train = TrainDataSet {
+            features: &train_set.features,
+            target: &train_set.target,
+            sorted_features,
+            grad: Vec::new(),
+            hessian: Vec::new(),
+            bins,
+            n_bins,
+        };
         for iter_cnt in 0..(num_boost_round) {
-            let (grad, hessian) = self.loss.calc_gradient(&train_set.target, &train_scores);
-
-            let train = TrainDataSet {
-                features: &train_set.features,
-                target: &train_set.target,
-                sorted_features: &sorted_features,
-                grad,
-                hessian,
-                bins: &bins,
-                n_bins: &n_bins,
-            };
+            train.update_grad_hessian(&self.loss, &train_scores);
             let learner = Node::build(
                 &train,
                 &indices,

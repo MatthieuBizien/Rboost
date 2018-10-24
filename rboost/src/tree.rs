@@ -2,6 +2,7 @@ use crate::{ColumnMajorMatrix, Params, StridedVecView, TrainDataSet};
 use ord_subset::OrdSubsetIterExt;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
+use std::mem::size_of;
 
 fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
     // A sum over a null set is not possible there, and this catch bugs.
@@ -42,7 +43,25 @@ struct SplitResult {
     right_indices: Vec<usize>,
 }
 
+fn transmute_vec<T: Sized>(v: &mut [u8]) -> &mut [T] {
+    //assert!(v.len() % size_of::<T>() == 0);
+    unsafe { std::slice::from_raw_parts_mut(v.as_ptr() as *mut T, v.len() / size_of::<T>()) }
+}
+
+fn split_at_mut_transmute<T: Sized>(v: &mut [u8], n_elements: usize) -> (&mut [T], &mut [u8]) {
+    let n_bytes = n_elements * size_of::<T>();
+    //assert!(v.len() >= n_bytes);
+    let (a, b) = v.split_at_mut(n_bytes);
+    (transmute_vec(a), b)
+}
+
 impl Node {
+    pub fn build_cache(train: &TrainDataSet, _params: &Params) -> Vec<u8> {
+        (0..train.features.flat().len() * size_of::<usize>())
+            .map(|_| 0)
+            .collect()
+    }
+
     ///  Loss reduction
     /// (Refer to Eq7 of Reference[1])
     fn _calc_split_gain(g: f64, h: f64, g_l: f64, h_l: f64, lambd: f64) -> f64 {
@@ -67,9 +86,12 @@ impl Node {
         sum_hessian: f64,
         param: &Params,
         feature_id: usize,
+        cache: &mut [u8],
     ) -> Option<SplitResult> {
         // sorted_instance_ids = instances[:, feature_id].argsort()
-        let mut sorted_instance_ids: Vec<usize> = indices.clone().to_vec();
+        let sorted_instance_ids = &mut cache[0..indices.len() * size_of::<usize>()];
+        let mut sorted_instance_ids: &mut [usize] = transmute_vec::<usize>(sorted_instance_ids);
+        sorted_instance_ids.clone_from_slice(indices);
         sorted_instance_ids
             .sort_unstable_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
 
@@ -131,10 +153,18 @@ impl Node {
         sum_hessian: f64,
         param: &Params,
         feature_id: usize,
+        cache: &mut [u8],
     ) -> Option<SplitResult> {
         let n_bin = train.n_bins[feature_id];
-        let mut grads: Vec<_> = (0..n_bin).map(|_| 0.).collect();
-        let mut hessians: Vec<_> = (0..n_bin).map(|_| 0.).collect();
+
+        let (grads, cache) = split_at_mut_transmute::<f64>(cache, n_bin);
+        let (hessians, cache) = split_at_mut_transmute::<f64>(cache, n_bin);
+        for x in grads.iter_mut() {
+            *x = 0.;
+        }
+        for x in hessians.iter_mut() {
+            *x = 0.;
+        }
 
         let mut min_bin = n_bin; // placeholder value: if it don't change we have no data
         let mut max_bin = 0;
@@ -207,9 +237,8 @@ impl Node {
         shrinkage_rate: f64,
         depth: usize,
         param: &Params,
+        cache: &mut [u8],
     ) -> Node {
-        let nfeatures = train.features.n_cols() as usize;
-
         macro_rules! return_leaf {
             () => {{
                 let val =
@@ -229,23 +258,52 @@ impl Node {
         let sum_grad = sum_indices(&train.grad, indices);
         let sum_hessian = sum_indices(&train.hessian, indices);
 
-        let get_results_bins = |feature_id| {
-            Self::calc_gain_bins(&train, indices, sum_grad, sum_hessian, &param, feature_id)
-        };
-        let get_results_direct = |feature_id| {
-            Self::calc_gain_direct(&train, indices, sum_grad, sum_hessian, &param, feature_id)
-        };
-        let results: Vec<SplitResult> = if param.n_bins > 0 {
-            (0..nfeatures)
-                .into_par_iter()
-                .filter_map(get_results_bins)
-                .collect()
-        } else {
-            (0..nfeatures)
-                .into_par_iter()
-                .filter_map(get_results_direct)
-                .collect()
-        };
+        let results: Vec<SplitResult>;
+        {
+            if param.n_bins > 0 {
+                let size_element = 2 * size_of::<f64>();
+                let mut caches: Vec<_> = Vec::new();
+                let mut cache = &mut cache[..];
+                for &size_bin in &train.n_bins {
+                    let e = cache.split_at_mut(size_bin * size_element);
+                    cache = e.1;
+                    caches.push(e.0);
+                }
+                let caches: Vec<_> = caches.into_iter().enumerate().collect();
+                results = caches
+                    .into_iter()
+                    .filter_map(|(feature_id, cache)| {
+                        Self::calc_gain_bins(
+                            &train,
+                            indices,
+                            sum_grad,
+                            sum_hessian,
+                            &param,
+                            feature_id,
+                            cache,
+                        )
+                    }).collect()
+            } else {
+                let cache: Vec<_> = cache
+                    .chunks_mut(train.target.len() * size_of::<usize>())
+                    .take(train.features.n_cols())
+                    .enumerate()
+                    .collect();
+                results = cache
+                    .into_iter()
+                    .filter_map(|(feature_id, cache)| {
+                        Self::calc_gain_direct(
+                            &train,
+                            indices,
+                            sum_grad,
+                            sum_hessian,
+                            &param,
+                            feature_id,
+                            cache,
+                        )
+                    }).collect();
+            };
+        }
 
         let best_result = results
             .into_iter()
@@ -266,6 +324,7 @@ impl Node {
             shrinkage_rate,
             depth + 1,
             &param,
+            cache,
         ));
 
         let right_child = Box::new(Self::build(
@@ -275,6 +334,7 @@ impl Node {
             shrinkage_rate,
             depth + 1,
             &param,
+            cache,
         ));
 
         Node::Split(SplitNode {
@@ -301,7 +361,7 @@ impl Node {
 
     pub fn par_predict(&self, features: &ColumnMajorMatrix<f64>) -> Vec<f64> {
         (0..features.n_rows())
-            .into_par_iter()
+            .into_iter()
             .map(|i| {
                 let row = features.row(i);
                 self.predict(&row)
@@ -354,7 +414,16 @@ mod tests {
             n_bins: 10_000,
         };
 
-        let tree = Node::build(&train, &indices, &mut predictions, 1., 0, &params);
+        let mut cache: Vec<u8> = Node::build_cache(&train, &params);
+        let tree = Node::build(
+            &train,
+            &indices,
+            &mut predictions,
+            1.,
+            0,
+            &params,
+            &mut cache,
+        );
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {

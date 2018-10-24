@@ -70,6 +70,8 @@ impl<L: Loss> GBT<L> {
         // each iteration
         let mut tree_predictions: Vec<_> = (0..train.target.len()).map(|_| 0.).collect();
 
+        let mut cache: Vec<_> = Node::build_cache(&train, &self.params);
+
         let indices: Vec<usize> = (0..train.target.len()).collect();
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores);
@@ -80,6 +82,7 @@ impl<L: Loss> GBT<L> {
                 shrinkage_rate,
                 0,
                 &self.params,
+                &mut cache,
             );
 
             if iter_cnt > 0 {

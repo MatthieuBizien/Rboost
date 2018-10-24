@@ -4,7 +4,9 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
 
 fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
-    debug_assert!(indices.len() != 0);
+    // A sum over a null set is not possible there, and this catch bugs.
+    // The speed difference is negligible
+    assert_ne!(indices.len(), 0);
     let mut o = 0.;
     for &i in indices {
         o += v[i];
@@ -78,8 +80,7 @@ impl Node {
         // We initialize at the first value
         let mut grad_left = train.grad[sorted_instance_ids[0]];
         let mut hessian_left = train.hessian[sorted_instance_ids[0]];
-        let mut best_gain =
-            Self::_calc_split_gain(sum_grad, sum_hessian, grad_left, hessian_left, param.lambda);
+        let mut best_gain = -INFINITY;
         let mut best_idx = 0;
         let mut best_val = train.features[(0, feature_id)];
         let mut last_val = train.features[(0, feature_id)];

@@ -159,9 +159,9 @@ mod tests {
         assert_eq!(matrix.row(1)[1], 5.);
         assert_eq!(matrix.row(2)[1], 6.);
 
-        let row0: Vec<f64> = matrix.row(0).iter().map(|&e|e.clone()).collect();
-        let row1: Vec<f64> = matrix.row(1).iter().map(|&e|e.clone()).collect();
-        let row2: Vec<f64> = matrix.row(2).iter().map(|&e|e.clone()).collect();
+        let row0: Vec<f64> = matrix.row(0).iter().map(|&e| e.clone()).collect();
+        let row1: Vec<f64> = matrix.row(1).iter().map(|&e| e.clone()).collect();
+        let row2: Vec<f64> = matrix.row(2).iter().map(|&e| e.clone()).collect();
         assert_eq!(row0, vec![1., 4.]);
         assert_eq!(row1, vec![2., 5.]);
         assert_eq!(row2, vec![3., 6.]);

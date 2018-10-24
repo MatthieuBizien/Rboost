@@ -202,20 +202,27 @@ impl Node {
     pub(crate) fn build(
         train: &TrainDataSet,
         indices: &[usize],
+        predictions: &mut [f64],
         shrinkage_rate: f64,
         depth: usize,
         param: &Params,
     ) -> Node {
         let nfeatures = train.features.n_cols() as usize;
 
-        let self_leaf = || {
-            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)
-                * shrinkage_rate;
-            Node::Leaf(LeafNode { val })
-        };
+        macro_rules! return_leaf {
+            () => {{
+                let val =
+                    Node::_calc_leaf_weight(&train.grad, &train.hessian, param.lambda, indices)
+                        * shrinkage_rate;
+                for &i in indices {
+                    predictions[i] = val;
+                }
+                return Node::Leaf(LeafNode { val });
+            }};
+        }
 
         if depth >= param.max_depth {
-            return self_leaf();
+            return_leaf!();
         }
 
         let sum_grad = sum_indices(&train.grad, indices);
@@ -244,25 +251,30 @@ impl Node {
             .ord_subset_max_by_key(|result| result.best_gain);
         let best_result: SplitResult = match best_result {
             Some(e) => e,
-            None => return self_leaf(),
+            None => return_leaf!(),
         };
 
         if best_result.best_gain < param.min_split_gain {
-            return self_leaf();
+            return_leaf!();
         }
 
-        let get_child = |instance_ids: Vec<usize>| {
-            Box::new(Self::build(
-                &train,
-                &instance_ids,
-                shrinkage_rate,
-                depth + 1,
-                &param,
-            ))
-        };
+        let left_child = Box::new(Self::build(
+            &train,
+            &best_result.left_indices,
+            predictions,
+            shrinkage_rate,
+            depth + 1,
+            &param,
+        ));
 
-        let left_child = get_child(best_result.left_indices);
-        let right_child = get_child(best_result.right_indices);
+        let right_child = Box::new(Self::build(
+            &train,
+            &best_result.right_indices,
+            predictions,
+            shrinkage_rate,
+            depth + 1,
+            &param,
+        ));
 
         Node::Split(SplitNode {
             left_child,

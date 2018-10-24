@@ -11,12 +11,6 @@ pub struct GBT {
 }
 
 impl GBT {
-    fn _build_learner(&self, train: &TrainDataSet, shrinkage_rate: f64) -> Node {
-        let depth = 0;
-        let indices: Vec<usize> = (0..train.target.len()).collect();
-        Node::build(&train, &indices, shrinkage_rate, depth, &self.params)
-    }
-
     pub fn build(
         params: &Params,
         train_set: &Dataset,
@@ -73,6 +67,12 @@ impl GBT {
         let mut val_scores: Option<Vec<f64>> =
             valid_set.map(|dataset| (0..dataset.target.len()).map(|_| 0.).collect());
 
+        // Predictions per tree. We create it before  so we don't have to allocate a new vector at
+        // each iteration
+        let mut tree_predictions: Vec<_> = (0..train_set.target.len()).map(|_| 0.).collect();
+
+        let indices: Vec<usize> = (0..train_set.target.len()).collect();
+
         for iter_cnt in 0..(num_boost_round) {
             let (grad, hessian) = self.loss.calc_gradient(&train_set.target, &train_scores);
 
@@ -85,7 +85,15 @@ impl GBT {
                 bins: &bins,
                 n_bins: &n_bins,
             };
-            let learner = self._build_learner(&train, shrinkage_rate);
+            let learner = Node::build(
+                &train,
+                &indices,
+                &mut tree_predictions,
+                shrinkage_rate,
+                0,
+                &self.params,
+            );
+
             if iter_cnt > 0 {
                 shrinkage_rate *= self.params.learning_rate;
             }

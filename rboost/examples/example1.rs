@@ -51,7 +51,11 @@ fn main() {
     };
 
     println!("Profiling to example1.profile");
-    PROFILER.lock().unwrap().start("./example1.profile").unwrap();
+    PROFILER
+        .lock()
+        .unwrap()
+        .start("./example1.profile")
+        .unwrap();
     let gbt = GBT::build(&params, &train, 1000, Some(&test), 1000);
     PROFILER.lock().unwrap().stop().unwrap();
 

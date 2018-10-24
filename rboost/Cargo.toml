@@ -5,7 +5,8 @@ authors = ["Matthieu Bizien <matthieu@databiz.io>"]
 edition = "2018"
 
 [dependencies]
-ord_subset = "3"
+# Git dependency until https://github.com/Emerentius/ord_subset/issues/4 is resolved
+ord_subset = {"git"="https://github.com/expenses/ord_subset.git"}
 rand = "0.5.5"
 flame = "0.2.2"
 rayon = "1.0"

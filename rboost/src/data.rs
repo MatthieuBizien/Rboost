@@ -1,6 +1,6 @@
 use crate::losses::Loss;
 use crate::{ColumnMajorMatrix, StridedVecView};
-use ord_subset::OrdSubsetSliceExt;
+use ord_subset::OrdSubsetSliceExtMut;
 
 type BinType = u32;
 

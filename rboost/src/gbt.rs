@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::{Dataset, Loss, Node, Params, RegLoss, StridedVecView, TrainDataSet};
+use crate::{Dataset, Loss, Node, Params, StridedVecView};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT<L: Loss> {

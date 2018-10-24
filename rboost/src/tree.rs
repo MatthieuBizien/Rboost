@@ -1,4 +1,4 @@
-use crate::{rmse, ColumnMajorMatrix, Dataset, Params, StridedVecView, TrainDataSet};
+use crate::{ColumnMajorMatrix, Params, StridedVecView, TrainDataSet};
 use ord_subset::OrdSubsetIterExt;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;

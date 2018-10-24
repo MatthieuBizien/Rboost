@@ -31,18 +31,18 @@ impl<L: Loss> GBT<L> {
 
     fn train(
         &mut self,
-        train_set: &Dataset,
+        train: &Dataset,
         num_boost_round: usize,
-        valid_set: Option<&Dataset>,
+        valid: Option<&Dataset>,
         early_stopping_rounds: usize,
     ) {
         // Check we have no NAN in input
-        for &x in train_set.features.flat() {
+        for &x in train.features.flat() {
             if x.is_nan() {
                 panic!("Found NAN in the features")
             }
         }
-        for &x in &train_set.target {
+        for &x in &train.target {
             if x.is_nan() {
                 panic!("Found NAN in the features")
             }
@@ -52,9 +52,7 @@ impl<L: Loss> GBT<L> {
         let mut best_iteration = 0;
         let mut best_val_loss = None;
         let train_start_time = Instant::now();
-
-        let sorted_features = train_set.sort_features();
-        let (bins, n_bins) = Dataset::bin_features(&sorted_features, self.params.n_bins);
+        let mut train = train.as_train_data(self.params.n_bins);
         println!(
             "Features sorted in {:.03}s",
             train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
@@ -64,24 +62,15 @@ impl<L: Loss> GBT<L> {
             "Training until validation scores don't improve for {} rounds.",
             early_stopping_rounds
         );
-        let mut train_scores: Vec<f64> = (0..train_set.target.len()).map(|_| 0.).collect();
+        let mut train_scores: Vec<f64> = (0..train.target.len()).map(|_| 0.).collect();
         let mut val_scores: Option<Vec<f64>> =
-            valid_set.map(|dataset| (0..dataset.target.len()).map(|_| 0.).collect());
+            valid.map(|dataset| (0..dataset.target.len()).map(|_| 0.).collect());
 
         // Predictions per tree. We create it before  so we don't have to allocate a new vector at
         // each iteration
-        let mut tree_predictions: Vec<_> = (0..train_set.target.len()).map(|_| 0.).collect();
+        let mut tree_predictions: Vec<_> = (0..train.target.len()).map(|_| 0.).collect();
 
-        let indices: Vec<usize> = (0..train_set.target.len()).collect();
-        let mut train = TrainDataSet {
-            features: &train_set.features,
-            target: &train_set.target,
-            sorted_features,
-            grad: Vec::new(),
-            hessian: Vec::new(),
-            bins,
-            n_bins,
-        };
+        let indices: Vec<usize> = (0..train.target.len()).collect();
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores);
             let learner = Node::build(
@@ -96,16 +85,16 @@ impl<L: Loss> GBT<L> {
             if iter_cnt > 0 {
                 shrinkage_rate *= self.params.learning_rate;
             }
-            for (i, val) in learner.par_predict(&train_set).into_iter().enumerate() {
+            for (i, val) in learner.par_predict(&train.features).into_iter().enumerate() {
                 train_scores[i] += val;
             }
 
-            if let Some(valid_set) = valid_set {
+            if let Some(valid) = valid {
                 let val_scores = val_scores.as_mut().expect("No val score");
-                for (i, val) in learner.par_predict(&valid_set).into_iter().enumerate() {
+                for (i, val) in learner.par_predict(&valid.features).into_iter().enumerate() {
                     val_scores[i] += val
                 }
-                let val_loss = self.loss.calc_loss(&valid_set.target, &val_scores);
+                let val_loss = self.loss.calc_loss(&valid.target, &val_scores);
 
                 if let Some(best_val_loss_) = best_val_loss {
                     if val_loss < best_val_loss_ || iter_cnt == 0 {

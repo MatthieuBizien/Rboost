@@ -1,4 +1,4 @@
-use crate::{Dataset, Params, StridedVecView, TrainDataSet};
+use crate::{rmse, ColumnMajorMatrix, Dataset, Params, StridedVecView, TrainDataSet};
 use ord_subset::OrdSubsetIterExt;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
@@ -298,12 +298,80 @@ impl Node {
         }
     }
 
-    pub fn par_predict(&self, train_set: &Dataset) -> Vec<f64> {
-        (0..train_set.target.len())
+    pub fn par_predict(&self, features: &ColumnMajorMatrix<f64>) -> Vec<f64> {
+        (0..features.n_rows())
             .into_par_iter()
             .map(|i| {
-                let row = train_set.features.row(i);
+                let row = features.row(i);
                 self.predict(&row)
             }).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+    use failure::Error;
+
+    fn parse_tsv(data: &str) -> Result<Dataset, Error> {
+        let mut target: Vec<f64> = Vec::new();
+        let mut features: Vec<Vec<f64>> = Vec::new();
+        for l in data.split("\n") {
+            if l.len() == 0 {
+                continue;
+            }
+            let mut items = l.split("\t").into_iter();
+            target.push(items.next().expect("first item").parse()?);
+            features.push(items.map(|e| e.parse().unwrap()).collect());
+        }
+        let features = ColumnMajorMatrix::from_rows(features);
+
+        Ok(Dataset { features, target })
+    }
+
+    #[test]
+    fn test_regression() {
+        let train = include_str!("../data/regression.train");
+        let train = parse_tsv(train).expect("Train data");
+        let test = include_str!("../data/regression.test");
+        let test = parse_tsv(test).expect("Train data");
+
+        let loss = RegLoss::default();
+        let mut train = train.as_train_data(128);
+        let zero_vec: Vec<_> = train.target.iter().map(|_| 0.).collect();
+        train.update_grad_hessian(&loss, &zero_vec);
+
+        let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
+        let indices: Vec<_> = (0..train.target.len()).collect();
+
+        let params = Params {
+            gamma: 0.,
+            lambda: 1.,
+            learning_rate: 0.99,
+            max_depth: 6,
+            min_split_gain: 0.1,
+            n_bins: 10_000,
+        };
+
+        let tree = Node::build(&train, &indices, &mut predictions, 1., 0, &params);
+        let pred2 = tree.par_predict(&train.features);
+        assert_eq!(predictions.len(), pred2.len());
+        for i in 0..predictions.len() {
+            assert_eq!(predictions[i], pred2[i]);
+        }
+
+        let loss_train = rmse(&train.target, &predictions);
+        let loss_test = rmse(&test.target, &tree.par_predict(&test.features));
+        assert!(
+            loss_train <= 0.433,
+            "Train loss too important, expected 0.43062595, got {} (test {})",
+            loss_train,
+            loss_test
+        );
+        assert!(
+            loss_test <= 0.446,
+            "Test loss too important, expected 0.44403195, got {}",
+            loss_test
+        );
     }
 }

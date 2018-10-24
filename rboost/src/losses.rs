@@ -1,18 +1,8 @@
+use crate::sum;
+
 pub trait Loss {
     fn calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>);
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64;
-}
-
-pub fn sum(v: &[f64]) -> f64 {
-    let mut o = 0.;
-    for e in v.iter() {
-        o += *e;
-    }
-    o
-}
-
-pub fn mean(v: &[f64]) -> f64 {
-    sum(&v) / (v.len() as f64)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

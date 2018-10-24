@@ -12,12 +12,14 @@ extern crate serde_derive;
 mod data;
 mod gbt;
 mod losses;
+mod math;
 mod matrix;
 mod tree;
 
 pub use crate::data::*;
 pub use crate::gbt::*;
 pub use crate::losses::*;
+pub use crate::math::*;
 pub use crate::matrix::*;
 use crate::tree::*;
 

@@ -6,7 +6,7 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use failure::Error;
-use rboost::{ColumnMajorMatrix, Dataset, Params, RegLoss, GBT};
+use rboost::{rmse, ColumnMajorMatrix, Dataset, Params, RegLoss, GBT};
 use std::fs::File;
 use std::io::Write;
 
@@ -24,15 +24,6 @@ fn parse_tsv(data: &str) -> Result<Dataset, Error> {
     let features = ColumnMajorMatrix::from_rows(features);
 
     Ok(Dataset { features, target })
-}
-
-fn rmse(target: &[f64], yhat: &[f64]) -> f64 {
-    let rmse: f64 = yhat
-        .iter()
-        .zip(target.iter())
-        .map(|(&a, &b)| (a - b).powi(2))
-        .sum();
-    (rmse / target.len() as f64).sqrt()
 }
 
 fn main() {

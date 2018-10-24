@@ -69,6 +69,20 @@ impl Dataset {
         let columns = ColumnMajorMatrix::from_columns(columns);
         (columns, n_bins)
     }
+
+    pub(crate) fn as_train_data(&self, n_bins: usize) -> TrainDataSet {
+        let sorted_features = self.sort_features();
+        let (bins, n_bins) = Dataset::bin_features(&sorted_features, n_bins);
+        TrainDataSet {
+            features: &self.features,
+            target: &self.target,
+            grad: Vec::new(),
+            hessian: Vec::new(),
+            sorted_features,
+            bins,
+            n_bins,
+        }
+    }
 }
 
 pub(crate) struct TrainDataSet<'a> {

@@ -146,6 +146,37 @@ impl Node {
         })
     }
 
+    fn get_best_split_direct(
+        train: &TrainDataSet,
+        indices: &[usize],
+        sum_grad: f64,
+        sum_hessian: f64,
+        param: &Params,
+        cache: &mut [u8],
+    ) -> Option<SplitResult> {
+        let cache: Vec<_> = cache
+            .chunks_mut(train.target.len() * size_of::<usize>())
+            .take(train.features.n_cols())
+            .enumerate()
+            .collect();
+        let results: Vec<SplitResult> = cache
+            .into_iter()
+            .filter_map(|(feature_id, cache)| {
+                Self::calc_gain_direct(
+                    &train,
+                    indices,
+                    sum_grad,
+                    sum_hessian,
+                    &param,
+                    feature_id,
+                    cache,
+                )
+            }).collect();
+        results
+            .into_iter()
+            .ord_subset_max_by_key(|result| result.best_gain)
+    }
+
     fn calc_gain_bins(
         train: &TrainDataSet,
         indices: &[usize],
@@ -228,6 +259,41 @@ impl Node {
         })
     }
 
+    fn get_best_split_bins(
+        train: &TrainDataSet,
+        indices: &[usize],
+        sum_grad: f64,
+        sum_hessian: f64,
+        param: &Params,
+        cache: &mut [u8],
+    ) -> Option<SplitResult> {
+        let size_element = 2 * size_of::<f64>();
+        let mut caches: Vec<_> = Vec::new();
+        let mut cache = &mut cache[..];
+        for &size_bin in &train.n_bins {
+            let e = cache.split_at_mut(size_bin * size_element);
+            cache = e.1;
+            caches.push(e.0);
+        }
+        let caches: Vec<_> = caches.into_iter().enumerate().collect();
+        let results: Vec<SplitResult> = caches
+            .into_iter()
+            .filter_map(|(feature_id, cache)| {
+                Self::calc_gain_bins(
+                    &train,
+                    indices,
+                    sum_grad,
+                    sum_hessian,
+                    &param,
+                    feature_id,
+                    cache,
+                )
+            }).collect();
+        results
+            .into_iter()
+            .ord_subset_max_by_key(|result| result.best_gain)
+    }
+
     /// Exact Greedy Algorithm for Split Finding
     ///  (Refer to Algorithm1 of Reference[1])
     pub(crate) fn build(
@@ -258,56 +324,15 @@ impl Node {
         let sum_grad = sum_indices(&train.grad, indices);
         let sum_hessian = sum_indices(&train.hessian, indices);
 
-        let results: Vec<SplitResult>;
-        {
-            if param.n_bins > 0 {
-                let size_element = 2 * size_of::<f64>();
-                let mut caches: Vec<_> = Vec::new();
-                let mut cache = &mut cache[..];
-                for &size_bin in &train.n_bins {
-                    let e = cache.split_at_mut(size_bin * size_element);
-                    cache = e.1;
-                    caches.push(e.0);
-                }
-                let caches: Vec<_> = caches.into_iter().enumerate().collect();
-                results = caches
-                    .into_iter()
-                    .filter_map(|(feature_id, cache)| {
-                        Self::calc_gain_bins(
-                            &train,
-                            indices,
-                            sum_grad,
-                            sum_hessian,
-                            &param,
-                            feature_id,
-                            cache,
-                        )
-                    }).collect()
-            } else {
-                let cache: Vec<_> = cache
-                    .chunks_mut(train.target.len() * size_of::<usize>())
-                    .take(train.features.n_cols())
-                    .enumerate()
-                    .collect();
-                results = cache
-                    .into_iter()
-                    .filter_map(|(feature_id, cache)| {
-                        Self::calc_gain_direct(
-                            &train,
-                            indices,
-                            sum_grad,
-                            sum_hessian,
-                            &param,
-                            feature_id,
-                            cache,
-                        )
-                    }).collect();
-            };
-        }
+        let best_result = if param.n_bins > 0 {
+            let o = Self::get_best_split_bins(train, indices, sum_grad, sum_hessian, param, cache);
+            o
+        } else {
+            let o =
+                Self::get_best_split_direct(train, indices, sum_grad, sum_hessian, param, cache);
+            o
+        };
 
-        let best_result = results
-            .into_iter()
-            .ord_subset_max_by_key(|result| result.best_gain);
         let best_result: SplitResult = match best_result {
             Some(e) => e,
             None => return_leaf!(),

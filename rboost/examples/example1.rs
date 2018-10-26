@@ -6,31 +6,15 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use failure::Error;
-use rboost::{rmse, ColumnMajorMatrix, Dataset, Params, RegLoss, GBT};
+use rboost::{parse_csv, rmse, ColumnMajorMatrix, Dataset, Params, RegLoss, GBT};
 use std::fs::File;
 use std::io::Write;
 
-fn parse_tsv(data: &str) -> Result<Dataset, Error> {
-    let mut target: Vec<f64> = Vec::new();
-    let mut features: Vec<Vec<f64>> = Vec::new();
-    for l in data.split("\n") {
-        if l.len() == 0 {
-            continue;
-        }
-        let mut items = l.split("\t").into_iter();
-        target.push(items.next().expect("first item").parse()?);
-        features.push(items.map(|e| e.parse().unwrap()).collect());
-    }
-    let features = ColumnMajorMatrix::from_rows(features);
-
-    Ok(Dataset { features, target })
-}
-
 fn main() {
     let train = include_str!("../data/regression.train");
-    let train = parse_tsv(train).expect("Train data");
+    let train = parse_csv(train, "\t").expect("Train data");
     let test = include_str!("../data/regression.test");
-    let test = parse_tsv(test).expect("Train data");
+    let test = parse_csv(test, "\t").expect("Train data");
 
     let params = Params {
         gamma: 0.,

@@ -1,10 +1,27 @@
 use crate::losses::Loss;
 use crate::{ColumnMajorMatrix, StridedVecView};
+use failure::Error;
 use ord_subset::OrdSubsetSliceExtMut;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
 
 type BinType = u32;
+
+pub fn parse_csv(data: &str, sep: &str) -> Result<Dataset, Error> {
+    let mut target: Vec<f64> = Vec::new();
+    let mut features: Vec<Vec<f64>> = Vec::new();
+    for l in data.split("\n") {
+        if l.len() == 0 {
+            continue;
+        }
+        let mut items = l.split(sep).into_iter();
+        target.push(items.next().expect("first item").parse()?);
+        features.push(items.map(|e| e.parse().unwrap()).collect());
+    }
+    let features = ColumnMajorMatrix::from_rows(features);
+
+    Ok(Dataset { features, target })
+}
 
 pub struct Dataset {
     /// Order is inverted: rows are features, columns are observation

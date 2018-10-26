@@ -405,30 +405,13 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use failure::Error;
-
-    fn parse_tsv(data: &str) -> Result<Dataset, Error> {
-        let mut target: Vec<f64> = Vec::new();
-        let mut features: Vec<Vec<f64>> = Vec::new();
-        for l in data.split("\n") {
-            if l.len() == 0 {
-                continue;
-            }
-            let mut items = l.split("\t").into_iter();
-            target.push(items.next().expect("first item").parse()?);
-            features.push(items.map(|e| e.parse().unwrap()).collect());
-        }
-        let features = ColumnMajorMatrix::from_rows(features);
-
-        Ok(Dataset { features, target })
-    }
 
     #[test]
     fn test_regression_bins() {
         let train = include_str!("../data/regression.train");
-        let train = parse_tsv(train).expect("Train data");
+        let train = parse_csv(train, "\t").expect("Train data");
         let test = include_str!("../data/regression.test");
-        let test = parse_tsv(test).expect("Train data");
+        let test = parse_csv(test, "\t").expect("Train data");
 
         let loss = RegLoss::default();
         let mut train = train.as_train_data(128);
@@ -481,9 +464,9 @@ mod tests {
     #[test]
     fn test_regression_direct() {
         let train = include_str!("../data/regression.train");
-        let train = parse_tsv(train).expect("Train data");
+        let train = parse_csv(train, "\t").expect("Train data");
         let test = include_str!("../data/regression.test");
-        let test = parse_tsv(test).expect("Train data");
+        let test = parse_csv(test, "\t").expect("Train data");
 
         let loss = RegLoss::default();
         let mut train = train.as_train_data(128);

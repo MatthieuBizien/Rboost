@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 # Git dependency until https://github.com/Emerentius/ord_subset/issues/4 is resolved
 ord_subset = {"git"="https://github.com/expenses/ord_subset.git"}
+failure = "0.1.2"
 rand = "0.5.5"
 flame = "0.2.2"
 rayon = "1.0"
@@ -14,7 +15,6 @@ serde = "1.0"
 serde_derive = "1.0"
 
 [dev-dependencies]
-failure = "0.1.2"
 cpuprofiler = "0.0.3"
 serde_json = "1.0"
 csv = "1"

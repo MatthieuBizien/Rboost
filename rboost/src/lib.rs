@@ -3,6 +3,7 @@
 #![feature(inner_deref)]
 
 extern crate core;
+extern crate failure;
 extern crate ord_subset;
 extern crate rand;
 extern crate rayon;

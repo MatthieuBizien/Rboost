@@ -177,3 +177,7 @@ pub(crate) fn build_direct(
         split_val: best_result.best_val,
     })
 }
+
+pub(crate) fn get_cache_size_direct(train: &TrainDataSet) -> usize {
+    train.features.flat().len() * size_of::<usize>()
+}

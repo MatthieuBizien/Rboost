@@ -196,3 +196,7 @@ pub(crate) fn build_bins(
         split_val: best_result.best_val,
     })
 }
+
+pub(crate) fn get_cache_size_bin(train: &TrainDataSet) -> usize {
+    train.n_bins.iter().sum::<usize>() * size_of::<f64>() * 2
+}

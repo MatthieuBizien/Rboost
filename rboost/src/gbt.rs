@@ -69,9 +69,7 @@ impl<L: Loss> GBT<L> {
         // Predictions per tree. We create it before  so we don't have to allocate a new vector at
         // each iteration
         let mut tree_predictions: Vec<_> = (0..train.target.len()).map(|_| 0.).collect();
-
-        let mut cache: Vec<_> = Node::build_cache(&train, &self.params);
-
+        let mut cache = Vec::new();
         let indices: Vec<usize> = (0..train.target.len()).collect();
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores);
@@ -80,7 +78,6 @@ impl<L: Loss> GBT<L> {
                 &indices,
                 &mut tree_predictions,
                 shrinkage_rate,
-                0,
                 &self.params,
                 &mut cache,
             );

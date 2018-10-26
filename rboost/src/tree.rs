@@ -1,8 +1,7 @@
 use crate::{sum_indices, ColumnMajorMatrix, Params, StridedVecView, TrainDataSet};
 //use rayon::prelude::ParallelIterator;
-use std::mem::size_of;
-use crate::tree_direct::build_direct;
-use crate::tree_bin::build_bins;
+use crate::tree_bin::{build_bins, get_cache_size_bin};
+use crate::tree_direct::{build_direct, get_cache_size_direct};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct SplitNode {
@@ -24,12 +23,6 @@ pub(crate) enum Node {
 }
 
 impl Node {
-    pub fn build_cache(train: &TrainDataSet, _params: &Params) -> Vec<u8> {
-        (0..train.features.flat().len() * size_of::<usize>())
-            .map(|_| 0)
-            .collect()
-    }
-
     ///  Loss reduction
     /// (Refer to Eq7 of Reference[1])
     pub(crate) fn _calc_split_gain(g: f64, h: f64, g_l: f64, h_l: f64, lambd: f64) -> f64 {
@@ -56,11 +49,12 @@ impl Node {
         indices: &[usize],
         predictions: &mut [f64],
         shrinkage_rate: f64,
-        depth: usize,
         params: &Params,
-        cache: &mut [u8],
+        cache: &mut Vec<u8>,
     ) -> Node {
+        let depth = 0;
         if params.n_bins > 0 {
+            cache.resize(get_cache_size_bin(&train), 0);
             build_bins(
                 train,
                 indices,
@@ -71,6 +65,7 @@ impl Node {
                 cache,
             )
         } else {
+            cache.resize(get_cache_size_direct(&train), 0);
             build_direct(
                 train,
                 indices,
@@ -135,16 +130,8 @@ mod tests {
             n_bins: 10_000,
         };
 
-        let mut cache: Vec<u8> = Node::build_cache(&train, &params);
-        let tree = Node::build(
-            &train,
-            &indices,
-            &mut predictions,
-            1.,
-            0,
-            &params,
-            &mut cache,
-        );
+        let mut cache: Vec<u8> = Vec::new();
+        let tree = Node::build(&train, &indices, &mut predictions, 1., &params, &mut cache);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -190,16 +177,8 @@ mod tests {
             n_bins: 0,
         };
 
-        let mut cache: Vec<u8> = Node::build_cache(&train, &params);
-        let tree = Node::build(
-            &train,
-            &indices,
-            &mut predictions,
-            1.,
-            0,
-            &params,
-            &mut cache,
-        );
+        let mut cache: Vec<u8> = Vec::new();
+        let tree = Node::build(&train, &indices, &mut predictions, 1., &params, &mut cache);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {

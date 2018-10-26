@@ -43,14 +43,22 @@ struct SplitResult {
     right_indices: Vec<usize>,
 }
 
-fn transmute_vec<T: Sized>(v: &mut [u8]) -> &mut [T] {
-    //assert!(v.len() % size_of::<T>() == 0);
+fn transmute_vec<T: Sized + Clone>(v: &mut [u8]) -> &mut [T] {
+    assert_eq!(v.len() % size_of::<T>(), 0);
     unsafe { std::slice::from_raw_parts_mut(v.as_ptr() as *mut T, v.len() / size_of::<T>()) }
 }
 
-fn split_at_mut_transmute<T: Sized>(v: &mut [u8], n_elements: usize) -> (&mut [T], &mut [u8]) {
+fn split_at_mut_transmute<T: Sized + Clone>(
+    v: &mut [u8],
+    n_elements: usize,
+) -> (&mut [T], &mut [u8]) {
     let n_bytes = n_elements * size_of::<T>();
-    //assert!(v.len() >= n_bytes);
+    assert!(
+        v.len() >= n_bytes,
+        "cache too small, got {}, expected {}",
+        v.len(),
+        n_bytes
+    );
     let (a, b) = v.split_at_mut(n_bytes);
     (transmute_vec(a), b)
 }
@@ -90,7 +98,7 @@ impl Node {
     ) -> Option<SplitResult> {
         // sorted_instance_ids = instances[:, feature_id].argsort()
         let sorted_instance_ids = &mut cache[0..indices.len() * size_of::<usize>()];
-        let mut sorted_instance_ids: &mut [usize] = transmute_vec::<usize>(sorted_instance_ids);
+        let sorted_instance_ids: &mut [usize] = transmute_vec::<usize>(sorted_instance_ids);
         sorted_instance_ids.clone_from_slice(indices);
         sorted_instance_ids
             .sort_unstable_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
@@ -189,7 +197,7 @@ impl Node {
         let n_bin = train.n_bins[feature_id];
 
         let (grads, cache) = split_at_mut_transmute::<f64>(cache, n_bin);
-        let (hessians, cache) = split_at_mut_transmute::<f64>(cache, n_bin);
+        let (hessians, _) = split_at_mut_transmute::<f64>(cache, n_bin);
         for x in grads.iter_mut() {
             *x = 0.;
         }

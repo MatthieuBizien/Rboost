@@ -1,6 +1,8 @@
 use crate::losses::Loss;
 use crate::{ColumnMajorMatrix, StridedVecView};
 use ord_subset::OrdSubsetSliceExtMut;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use std::f64::INFINITY;
 
 type BinType = u32;
 
@@ -70,9 +72,40 @@ impl Dataset {
         (columns, n_bins)
     }
 
+    fn get_threshold_vals(values: &[f64], bins: &[BinType], n_bin: usize) -> Vec<f64> {
+        if n_bin == 0 {
+            return Vec::new();
+        }
+        let mut min_vals = vec![INFINITY; n_bin];
+        let mut max_vals = vec![-INFINITY; n_bin];
+        for (&val, &bin) in values.iter().zip(bins.iter()) {
+            let bin = bin as usize;
+            min_vals[bin] = min_vals[bin].min(val);
+            max_vals[bin] = max_vals[bin].max(val);
+        }
+        max_vals
+            .into_iter()
+            .zip(min_vals.into_iter().skip(1))
+            .map(|(a, b)| (a / 2. + b / 2.))
+            .collect()
+    }
+
     pub(crate) fn as_train_data(&self, n_bins: usize) -> TrainDataSet {
         let sorted_features = self.sort_features();
         let (bins, n_bins) = Dataset::bin_features(&sorted_features, n_bins);
+
+        let threshold_vals: Vec<_> = self
+            .features
+            .columns()
+            .zip(bins.columns())
+            .zip(n_bins.iter())
+            .collect();
+
+        let threshold_vals = threshold_vals
+            .into_par_iter()
+            .map(|((values, bins), &n_bin)| Self::get_threshold_vals(values, bins, n_bin))
+            .collect();
+
         TrainDataSet {
             features: &self.features,
             target: &self.target,
@@ -81,6 +114,7 @@ impl Dataset {
             sorted_features,
             bins,
             n_bins,
+            threshold_vals,
         }
     }
 }
@@ -93,6 +127,7 @@ pub(crate) struct TrainDataSet<'a> {
     pub sorted_features: ColumnMajorMatrix<usize>,
     pub bins: ColumnMajorMatrix<BinType>,
     pub n_bins: Vec<usize>,
+    pub threshold_vals: Vec<Vec<f64>>,
 }
 
 impl<'a> TrainDataSet<'a> {

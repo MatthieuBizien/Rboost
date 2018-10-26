@@ -284,19 +284,15 @@ impl Node {
 
         let mut left_indices = Vec::new();
         let mut right_indices = Vec::new();
-        let mut best_val_left = -INFINITY;
-        let mut best_val_right = INFINITY;
         for &i in indices {
             let bin = train.bins[(i, feature_id)] as usize;
             if bin <= best_bin {
                 left_indices.push(i);
-                best_val_left = best_val_left.max(train.features[(i, feature_id)]);
             } else {
                 right_indices.push(i);
-                best_val_right = best_val_right.min(train.features[(i, feature_id)]);
             }
         }
-        let best_val = (best_val_left + best_val_right) / 2.;
+        let best_val = train.threshold_vals[feature_id][best_bin];
         Some(SplitResult {
             feature_id,
             best_val,

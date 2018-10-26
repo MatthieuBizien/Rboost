@@ -38,9 +38,9 @@ fn main() {
         learning_rate: 0.99,
         max_depth: 3,
         min_split_gain: 0.1,
-        n_bins: 0,
+        n_bins: 128,
     };
-
+    println!("Params {:?}", params);
     println!("Profiling to example1.profile");
     PROFILER
         .lock()

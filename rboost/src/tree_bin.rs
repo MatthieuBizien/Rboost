@@ -13,18 +13,14 @@ struct SplitResult {
     right_indices: Vec<usize>,
 }
 
-fn calc_gain_bins(
+fn update_grad_hessian(
     train: &TrainDataSet,
     indices: &[usize],
-    sum_grad: f64,
-    sum_hessian: f64,
-    params: &Params,
     feature_id: usize,
-    cache: &mut [u8],
-) -> Option<(usize, f64, usize)> {
-    let n_bin = train.n_bins[feature_id];
-    let (grads, cache) = split_at_mut_transmute::<f64>(cache, n_bin);
-    let (hessians, _) = split_at_mut_transmute::<f64>(cache, n_bin);
+    grads: &mut [f64],
+    hessians: &mut [f64],
+) -> (usize, usize) {
+    assert_eq!(grads.len(), hessians.len());
     for x in grads.iter_mut() {
         *x = 0.;
     }
@@ -32,7 +28,7 @@ fn calc_gain_bins(
         *x = 0.;
     }
 
-    let mut min_bin = n_bin; // placeholder value: if it don't change we have no data
+    let mut min_bin = grads.len(); // placeholder value: if it don't change we have no data
     let mut max_bin = 0;
 
     for &i in indices {
@@ -42,7 +38,20 @@ fn calc_gain_bins(
         min_bin = min_bin.min(bin);
         max_bin = max_bin.max(bin);
     }
-    if max_bin == min_bin || min_bin == n_bin {
+    (min_bin, max_bin)
+}
+
+fn calc_gain_bins(
+    sum_grad: f64,
+    sum_hessian: f64,
+    params: &Params,
+    feature_id: usize,
+    grads: &[f64],
+    hessians: &[f64],
+    min_bin: usize,
+    max_bin: usize,
+) -> Option<(usize, f64, usize)> {
+    if max_bin == min_bin || max_bin == 0 {
         // Not possible to split if there is just one bin
         return None;
     }
@@ -73,34 +82,44 @@ fn calc_gain_bins(
     return Some((feature_id, best_gain, best_bin));
 }
 
+fn split_grads_hessians<'a>(
+    n_bins: &[usize],
+    cache: &'a mut [f64],
+) -> Vec<(usize, &'a mut [f64], &'a mut [f64])> {
+    let mut caches: Vec<_> = Vec::new();
+    let mut cache = &mut cache[..];
+    for (i, &size_bin) in n_bins.iter().enumerate() {
+        let (grads, cache_) = cache.split_at_mut(size_bin);
+        let (hessians, cache_) = cache_.split_at_mut(size_bin);
+        cache = cache_;
+        caches.push((i, grads, hessians));
+    }
+    caches
+}
+
 fn get_best_split_bins(
     train: &TrainDataSet,
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
     params: &Params,
-    cache: &mut [u8],
+    grads_hessians: &mut [f64],
 ) -> Option<SplitResult> {
-    let size_element = 2 * size_of::<f64>();
-    let mut caches: Vec<_> = Vec::new();
-    let mut cache = &mut cache[..];
-    for &size_bin in &train.n_bins {
-        let e = cache.split_at_mut(size_bin * size_element);
-        cache = e.1;
-        caches.push(e.0);
-    }
-    let caches: Vec<_> = caches.into_iter().enumerate().collect();
+    let caches: Vec<_> = split_grads_hessians(&train.n_bins, grads_hessians);
     let results: Vec<_> = caches
         .into_iter()
-        .filter_map(|(feature_id, cache)| {
+        .filter_map(|(feature_id, grads, hessians)| {
+            let (min_bin, max_bin) =
+                update_grad_hessian(&train, &indices, feature_id, grads, hessians);
             calc_gain_bins(
-                &train,
-                indices,
                 sum_grad,
                 sum_hessian,
                 &params,
                 feature_id,
-                cache,
+                grads,
+                hessians,
+                min_bin,
+                max_bin,
             )
         }).collect();
     let best = results.into_iter().ord_subset_max_by_key(|result| result.1);
@@ -131,15 +150,16 @@ fn get_best_split_bins(
 
 /// Exact Greedy Algorithm for Split Finding
 ///  (Refer to Algorithm1 of Reference[1])
-pub(crate) fn build_bins(
+pub(crate) fn build_bins<'a>(
     train: &TrainDataSet,
     indices: &[usize],
     predictions: &mut [f64],
     shrinkage_rate: f64,
     depth: usize,
     params: &Params,
-    cache: &mut [u8],
-) -> Node {
+    cache: &'a mut [u8],
+    grads_hessians: Option<&mut [f64]>,
+) -> (Box<Node>, Option<&'a [f64]>) {
     macro_rules! return_leaf {
         () => {{
             let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices)
@@ -147,7 +167,7 @@ pub(crate) fn build_bins(
             for &i in indices {
                 predictions[i] = val;
             }
-            return Node::Leaf(LeafNode { val });
+            return (Box::new(Node::Leaf(LeafNode { val })), None);
         }};
     }
 
@@ -158,7 +178,18 @@ pub(crate) fn build_bins(
     let sum_grad = sum_indices(&train.grad, indices);
     let sum_hessian = sum_indices(&train.hessian, indices);
 
-    let best_result = get_best_split_bins(train, indices, sum_grad, sum_hessian, params, cache);
+    let grads_hessians = grads_hessians.unwrap_or_else(||{
+        let n_elements = n_elements_per_node(&train);
+        split_at_mut_transmute::<f64>(cache, n_elements).0
+    });
+    let best_result = get_best_split_bins(
+        train,
+        indices,
+        sum_grad,
+        sum_hessian,
+        params,
+        grads_hessians,
+    );
 
     let best_result: SplitResult = match best_result {
         Some(e) => e,
@@ -169,7 +200,7 @@ pub(crate) fn build_bins(
         return_leaf!();
     }
 
-    let left_child = Box::new(build_bins(
+    let (left_child, _) = build_bins(
         &train,
         &best_result.left_indices,
         predictions,
@@ -177,9 +208,10 @@ pub(crate) fn build_bins(
         depth + 1,
         &params,
         cache,
-    ));
+        None,
+    );
 
-    let right_child = Box::new(build_bins(
+    let (right_child, _) = build_bins(
         &train,
         &best_result.right_indices,
         predictions,
@@ -187,16 +219,22 @@ pub(crate) fn build_bins(
         depth + 1,
         &params,
         cache,
-    ));
+        None,
+    );
 
-    Node::Split(SplitNode {
+    let node = Box::new(Node::Split(SplitNode {
         left_child,
         right_child,
         split_feature_id: best_result.feature_id,
         split_val: best_result.best_val,
-    })
+    }));
+    (node, None)
+}
+
+pub(crate) fn n_elements_per_node(train: &TrainDataSet) -> usize {
+    train.n_bins.iter().sum::<usize>() * size_of::<f64>() * 2
 }
 
 pub(crate) fn get_cache_size_bin(train: &TrainDataSet) -> usize {
-    train.n_bins.iter().sum::<usize>() * size_of::<f64>() * 2
+    n_elements_per_node(train) * size_of::<f64>()
 }

@@ -55,7 +55,7 @@ impl Node {
         let depth = 0;
         if params.n_bins > 0 {
             cache.resize(get_cache_size_bin(&train), 0);
-            build_bins(
+            let (boxed_node, _) = build_bins(
                 train,
                 indices,
                 predictions,
@@ -63,7 +63,9 @@ impl Node {
                 depth,
                 params,
                 cache,
-            )
+                None,
+            );
+            *boxed_node
         } else {
             cache.resize(get_cache_size_direct(&train), 0);
             build_direct(

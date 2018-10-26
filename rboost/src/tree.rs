@@ -424,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn test_regression() {
+    fn test_regression_bins() {
         let train = include_str!("../data/regression.train");
         let train = parse_tsv(train).expect("Train data");
         let test = include_str!("../data/regression.test");
@@ -445,6 +445,61 @@ mod tests {
             max_depth: 6,
             min_split_gain: 0.1,
             n_bins: 10_000,
+        };
+
+        let mut cache: Vec<u8> = Node::build_cache(&train, &params);
+        let tree = Node::build(
+            &train,
+            &indices,
+            &mut predictions,
+            1.,
+            0,
+            &params,
+            &mut cache,
+        );
+        let pred2 = tree.par_predict(&train.features);
+        assert_eq!(predictions.len(), pred2.len());
+        for i in 0..predictions.len() {
+            assert_eq!(predictions[i], pred2[i]);
+        }
+
+        let loss_train = rmse(&train.target, &predictions);
+        let loss_test = rmse(&test.target, &tree.par_predict(&test.features));
+        assert!(
+            loss_train <= 0.433,
+            "Train loss too important, expected 0.43062595, got {} (test {})",
+            loss_train,
+            loss_test
+        );
+        assert!(
+            loss_test <= 0.446,
+            "Test loss too important, expected 0.44403195, got {}",
+            loss_test
+        );
+    }
+
+    #[test]
+    fn test_regression_direct() {
+        let train = include_str!("../data/regression.train");
+        let train = parse_tsv(train).expect("Train data");
+        let test = include_str!("../data/regression.test");
+        let test = parse_tsv(test).expect("Train data");
+
+        let loss = RegLoss::default();
+        let mut train = train.as_train_data(128);
+        let zero_vec: Vec<_> = train.target.iter().map(|_| 0.).collect();
+        train.update_grad_hessian(&loss, &zero_vec);
+
+        let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
+        let indices: Vec<_> = (0..train.target.len()).collect();
+
+        let params = Params {
+            gamma: 0.,
+            lambda: 1.,
+            learning_rate: 0.99,
+            max_depth: 6,
+            min_split_gain: 0.1,
+            n_bins: 0,
         };
 
         let mut cache: Vec<u8> = Node::build_cache(&train, &params);

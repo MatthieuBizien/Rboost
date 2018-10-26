@@ -16,6 +16,8 @@ mod losses;
 mod math;
 mod matrix;
 mod tree;
+mod tree_bin;
+mod tree_direct;
 
 pub use crate::data::*;
 pub use crate::gbt::*;

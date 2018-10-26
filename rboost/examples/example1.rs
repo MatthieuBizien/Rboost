@@ -5,8 +5,7 @@ extern crate rboost;
 extern crate serde_json;
 
 use cpuprofiler::PROFILER;
-use failure::Error;
-use rboost::{parse_csv, rmse, ColumnMajorMatrix, Dataset, Params, RegLoss, GBT};
+use rboost::{parse_csv, rmse, Params, RegLoss, GBT};
 use std::fs::File;
 use std::io::Write;
 

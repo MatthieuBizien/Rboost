@@ -51,3 +51,10 @@ pub(crate) fn split_at_mut_transmute<T: Sized + Clone>(
     let (a, b) = v.split_at_mut(n_bytes);
     (transmute_vec(a), b)
 }
+
+pub(crate) fn sub_vec(a: &mut [f64], b: &[f64]) {
+    assert_eq!(a.len(), b.len());
+    for (a, b) in a.iter_mut().zip(b.iter()) {
+        *a -= b;
+    }
+}

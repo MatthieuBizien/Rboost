@@ -116,15 +116,13 @@ pub(crate) fn build_direct(
     train: &TrainDataSet,
     indices: &[usize],
     predictions: &mut [f64],
-    shrinkage_rate: f64,
     depth: usize,
     params: &Params,
     cache: &mut [u8],
 ) -> Node {
     macro_rules! return_leaf {
         () => {{
-            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices)
-                * shrinkage_rate;
+            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices);
             for &i in indices {
                 predictions[i] = val;
             }
@@ -154,7 +152,6 @@ pub(crate) fn build_direct(
         &train,
         &best_result.left_indices,
         predictions,
-        shrinkage_rate,
         depth + 1,
         &params,
         cache,
@@ -164,7 +161,6 @@ pub(crate) fn build_direct(
         &train,
         &best_result.right_indices,
         predictions,
-        shrinkage_rate,
         depth + 1,
         &params,
         cache,

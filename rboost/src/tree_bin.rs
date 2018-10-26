@@ -156,7 +156,6 @@ pub(crate) fn build_bins<'a>(
     train: &TrainDataSet,
     indices: &[usize],
     predictions: &mut [f64],
-    shrinkage_rate: f64,
     depth: usize,
     params: &Params,
     cache: &'a mut [u8],
@@ -164,8 +163,7 @@ pub(crate) fn build_bins<'a>(
 ) -> (Box<Node>, Option<&'a [f64]>) {
     macro_rules! return_leaf {
         () => {{
-            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices)
-                * shrinkage_rate;
+            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices);
             for &i in indices {
                 predictions[i] = val;
             }
@@ -211,7 +209,6 @@ pub(crate) fn build_bins<'a>(
             &train,
             first_indices,
             predictions,
-            shrinkage_rate,
             depth + 1,
             &params,
             cache,
@@ -230,7 +227,6 @@ pub(crate) fn build_bins<'a>(
             &train,
             second_indices,
             predictions,
-            shrinkage_rate,
             depth + 1,
             &params,
             cache,

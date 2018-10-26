@@ -44,39 +44,33 @@ impl Node {
     ) -> f64 {
         return sum_indices(grad, indices) / (sum_indices(hessian, indices) + lambda);
     }
+
     pub fn build(
         train: &TrainDataSet,
         indices: &[usize],
         predictions: &mut [f64],
-        shrinkage_rate: f64,
         params: &Params,
         cache: &mut Vec<u8>,
     ) -> Node {
         let depth = 0;
         if params.n_bins > 0 {
             cache.resize(get_cache_size_bin(&train, &params), 0);
-            let (boxed_node, _) = build_bins(
-                train,
-                indices,
-                predictions,
-                shrinkage_rate,
-                depth,
-                params,
-                cache,
-                None,
-            );
+            let (boxed_node, _) =
+                build_bins(train, indices, predictions, depth, params, cache, None);
             *boxed_node
         } else {
             cache.resize(get_cache_size_direct(&train), 0);
-            build_direct(
-                train,
-                indices,
-                predictions,
-                shrinkage_rate,
-                depth,
-                params,
-                cache,
-            )
+            build_direct(train, indices, predictions, depth, params, cache)
+        }
+    }
+
+    pub fn apply_shrinking(&mut self, shrinkage_rate: f64) {
+        match self {
+            Node::Leaf(ref mut node) => node.val *= shrinkage_rate,
+            Node::Split(ref mut node) => {
+                Node::apply_shrinking(&mut node.left_child, shrinkage_rate);
+                Node::apply_shrinking(&mut node.right_child, shrinkage_rate);
+            }
         }
     }
 
@@ -133,7 +127,7 @@ mod tests {
         };
 
         let mut cache: Vec<u8> = Vec::new();
-        let tree = Node::build(&train, &indices, &mut predictions, 1., &params, &mut cache);
+        let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -180,7 +174,7 @@ mod tests {
         };
 
         let mut cache: Vec<u8> = Vec::new();
-        let tree = Node::build(&train, &indices, &mut predictions, 1., &params, &mut cache);
+        let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {

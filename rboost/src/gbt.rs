@@ -1,6 +1,7 @@
 use std::time::Instant;
 
-use crate::{Dataset, Loss, Node, Params, StridedVecView};
+use crate::{min_diff_vectors, Dataset, Loss, Node, Params, StridedVecView};
+use crate::math::cosine_simularity;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT<L: Loss> {
@@ -73,18 +74,18 @@ impl<L: Loss> GBT<L> {
         let indices: Vec<usize> = (0..train.target.len()).collect();
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores);
-            let learner = Node::build(
+            let mut learner = Node::build(
                 &train,
                 &indices,
                 &mut tree_predictions,
-                shrinkage_rate,
                 &self.params,
                 &mut cache,
             );
+            let alpha = shrinkage_rate * cosine_simularity(&train.grad, &tree_predictions);
+            //let alpha = shrinkage_rate * min_diff_vectors(&train.grad, &tree_predictions);
+            learner.apply_shrinking(shrinkage_rate);
 
-            if iter_cnt > 0 {
-                shrinkage_rate *= self.params.learning_rate;
-            }
+            shrinkage_rate *= self.params.learning_rate;
             for (i, val) in learner.par_predict(&train.features).into_iter().enumerate() {
                 train_scores[i] += val;
             }
@@ -94,10 +95,14 @@ impl<L: Loss> GBT<L> {
                 for (i, val) in learner.par_predict(&valid.features).into_iter().enumerate() {
                     val_scores[i] += val
                 }
-                let val_loss = self.loss.calc_loss(&valid.target, &val_scores);
+                let val_loss =
+                    self.loss.calc_loss(&valid.target, &val_scores) / (valid.target.len() as f64);
+                let val_loss = val_loss.sqrt();
 
-                if let Some(best_val_loss_) = best_val_loss {
-                    if val_loss < best_val_loss_ || iter_cnt == 0 {
+                if iter_cnt == 0 {
+                    best_val_loss = Some(val_loss)
+                } else if let Some(best_val_loss_) = best_val_loss {
+                    if val_loss < best_val_loss_ {
                         best_val_loss = Some(val_loss);
                         best_iteration = iter_cnt;
                     }
@@ -110,6 +115,9 @@ impl<L: Loss> GBT<L> {
                                 .map(|e| format!("{:.10}", e))
                                 .unwrap_or("-".to_string())
                         );
+                        for _ in best_iteration..(iter_cnt - 1) {
+                            self.models.pop();
+                        }
                         break;
                     }
                 }

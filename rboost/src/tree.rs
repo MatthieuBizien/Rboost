@@ -25,13 +25,20 @@ pub(crate) enum Node {
 impl Node {
     ///  Loss reduction
     /// (Refer to Eq7 of Reference[1])
-    pub(crate) fn _calc_split_gain(g: f64, h: f64, g_l: f64, h_l: f64, lambd: f64) -> f64 {
-        fn calc_term(g: f64, h: f64, lambd: f64) -> f64 {
-            g.powi(2) / (h + lambd)
+    pub(crate) fn _calc_split_gain(
+        g: f64,
+        h: f64,
+        g_l: f64,
+        h_l: f64,
+        lambda: f64,
+        gamma: f64,
+    ) -> f64 {
+        fn calc_term(g: f64, h: f64, lambda: f64) -> f64 {
+            g.powi(2) / (h + lambda)
         }
         let g_r = g - g_l;
         let h_r = h - h_l;
-        calc_term(g_l, h_l, lambd) + calc_term(g_r, h_r, lambd) - calc_term(g, h, lambd)
+        calc_term(g_l, h_l, lambda) + calc_term(g_r, h_r, lambda) - calc_term(g, h, lambda) - gamma
     }
 
     /// Calculate the optimal weight of this leaf node.

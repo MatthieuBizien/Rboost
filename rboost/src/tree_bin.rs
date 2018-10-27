@@ -73,6 +73,7 @@ fn calc_gain_bins(
             grad_left,
             hessian_left,
             params.lambda,
+            params.gamma,
         );
 
         if current_gain > best_gain {

@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use crate::{min_diff_vectors, Dataset, Loss, Node, Params, StridedVecView};
 use crate::math::cosine_simularity;
+use crate::{min_diff_vectors, Dataset, Loss, Node, Params, StridedVecView};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT<L: Loss> {

@@ -55,6 +55,7 @@ fn calc_gain_direct(
                 grad_left,
                 hessian_left,
                 params.lambda,
+                params.gamma,
             );
 
             if current_gain > best_gain {

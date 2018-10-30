@@ -1,3 +1,5 @@
+#![feature(duration_as_u128)]
+
 extern crate cpuprofiler;
 extern crate csv;
 extern crate failure;
@@ -8,6 +10,7 @@ use cpuprofiler::PROFILER;
 use rboost::{parse_csv, rmse, Params, RegLoss, GBT};
 use std::fs::File;
 use std::io::Write;
+use std::time::Instant;
 
 fn main() {
     let train = include_str!("../data/regression.train");
@@ -16,12 +19,12 @@ fn main() {
     let test = parse_csv(test, "\t").expect("Train data");
 
     let params = Params {
-        gamma: 0.,
-        lambda: 1.,
-        learning_rate: 0.99,
+        gamma: 1.,
+        lambda: 10.,
+        learning_rate: 0.97,
         max_depth: 3,
-        min_split_gain: 0.1,
-        n_bins: 128,
+        min_split_gain: 1.,
+        n_bins: 2048,
     };
     println!("Params {:?}", params);
     println!("Profiling to example1.profile");
@@ -32,6 +35,23 @@ fn main() {
         .unwrap();
     let gbt = GBT::build(&params, &train, 1000, Some(&test), 1000, RegLoss::default());
     PROFILER.lock().unwrap().stop().unwrap();
+
+    let n_preds = 10;
+    let predict_start_time = Instant::now();
+    let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
+    for _ in 0..n_preds {
+        for (i, pred) in predictions.iter_mut().enumerate() {
+            *pred += gbt.predict(&train.row(i));
+        }
+    }
+    println!(
+        "{} Predictions. Elapsed: {:.2} secs",
+        n_preds,
+        predict_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+    );
+    for pred in predictions.iter_mut() {
+        *pred /= n_preds as f64;
+    }
 
     let yhat_train: Vec<f64> = (0..train.features.n_rows())
         .map(|i| gbt.predict(&train.row(i)))

@@ -86,16 +86,18 @@ fn calc_gain_bins(
 }
 
 fn split_grads_hessians<'a>(
+    columns: &[usize],
     n_bins: &[usize],
     cache: &'a mut [f64],
 ) -> Vec<(usize, &'a mut [f64], &'a mut [f64])> {
     let mut caches: Vec<_> = Vec::new();
     let mut cache = &mut cache[..];
-    for (i, &size_bin) in n_bins.iter().enumerate() {
+    for &column in columns {
+        let size_bin = n_bins[column];
         let (grads, cache_) = cache.split_at_mut(size_bin);
         let (hessians, cache_) = cache_.split_at_mut(size_bin);
         cache = cache_;
-        caches.push((i, grads, hessians));
+        caches.push((column, grads, hessians));
     }
     caches
 }
@@ -108,7 +110,7 @@ fn get_best_split_bins(
     params: &Params,
     grads_hessians: &mut [f64],
 ) -> Option<SplitResult> {
-    let caches: Vec<_> = split_grads_hessians(&train.n_bins, grads_hessians);
+    let caches: Vec<_> = split_grads_hessians(&train.columns, &train.n_bins, grads_hessians);
     let results: Vec<_> = caches
         .into_iter()
         .filter_map(|(feature_id, grads, hessians)| {

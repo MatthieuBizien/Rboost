@@ -90,12 +90,11 @@ fn get_best_split_direct(
 ) -> Option<SplitResult> {
     let cache: Vec<_> = cache
         .chunks_mut(train.target.len() * size_of::<usize>())
-        .take(train.features.n_cols())
-        .enumerate()
+        .zip(&train.columns)
         .collect();
     let results: Vec<SplitResult> = cache
         .into_iter()
-        .filter_map(|(feature_id, cache)| {
+        .filter_map(|(cache, &feature_id)| {
             calc_gain_direct(
                 &train,
                 indices,

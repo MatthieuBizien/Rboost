@@ -123,8 +123,11 @@ impl Dataset {
             .map(|((values, bins), &n_bin)| Self::get_threshold_vals(values, bins, n_bin))
             .collect();
 
+        let columns = (0..self.features.n_cols()).collect();
+
         TrainDataSet {
             features: &self.features,
+            columns,
             target: &self.target,
             grad: Vec::new(),
             hessian: Vec::new(),
@@ -138,6 +141,7 @@ impl Dataset {
 
 pub(crate) struct TrainDataSet<'a> {
     pub features: &'a ColumnMajorMatrix<f64>,
+    pub columns: Vec<usize>,
     pub target: &'a Vec<f64>,
     pub grad: Vec<f64>,
     pub hessian: Vec<f64>,

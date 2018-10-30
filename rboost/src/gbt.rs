@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::math::cosine_simularity;
-use crate::{min_diff_vectors, Dataset, Loss, Node, Params, StridedVecView};
+use crate::{min_diff_vectors, Booster, Dataset, Loss, Node, Params, StridedVecView};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT<L: Loss> {
@@ -81,9 +81,16 @@ impl<L: Loss> GBT<L> {
                 &self.params,
                 &mut cache,
             );
-            let alpha = shrinkage_rate * cosine_simularity(&train.grad, &tree_predictions);
-            //let alpha = shrinkage_rate * min_diff_vectors(&train.grad, &tree_predictions);
-            learner.apply_shrinking(shrinkage_rate);
+            let alpha = match self.params.booster {
+                Booster::CosineSimilarity => {
+                    shrinkage_rate * cosine_simularity(&train.grad, &tree_predictions)
+                }
+                Booster::Geometric => shrinkage_rate,
+                Booster::MinDiffVectors => {
+                    shrinkage_rate * min_diff_vectors(&train.grad, &tree_predictions)
+                }
+            };
+            learner.apply_shrinking(alpha);
 
             shrinkage_rate *= self.params.learning_rate;
             for (i, val) in learner.par_predict(&train.features).into_iter().enumerate() {

@@ -36,6 +36,13 @@ pub static DEFAULT_MIN_SPLIT_GAIN: f64 = 0.1;
 pub static DEFAULT_N_BINS: usize = 256;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Booster {
+    Geometric,
+    CosineSimilarity,
+    MinDiffVectors,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Params {
     pub gamma: f64,
     pub lambda: f64,
@@ -43,6 +50,7 @@ pub struct Params {
     pub max_depth: usize,
     pub min_split_gain: f64,
     pub n_bins: usize,
+    pub booster: Booster,
 }
 
 impl Params {
@@ -54,6 +62,7 @@ impl Params {
             max_depth: DEFAULT_MAX_DEPTH,
             min_split_gain: DEFAULT_MIN_SPLIT_GAIN,
             n_bins: DEFAULT_N_BINS,
+            booster: Booster::Geometric,
         }
     }
 }

@@ -7,7 +7,7 @@ extern crate rboost;
 extern crate serde_json;
 
 use cpuprofiler::PROFILER;
-use rboost::{parse_csv, rmse, Params, RegLoss, GBT};
+use rboost::{parse_csv, rmse, Booster, Params, RegLoss, GBT};
 use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
@@ -25,6 +25,7 @@ fn main() {
         max_depth: 3,
         min_split_gain: 1.,
         n_bins: 2048,
+        booster: Booster::Geometric,
     };
     println!("Params {:?}", params);
     println!("Profiling to example1.profile");

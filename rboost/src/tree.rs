@@ -131,6 +131,7 @@ mod tests {
             max_depth: 6,
             min_split_gain: 0.1,
             n_bins: 10_000,
+            booster: Booster::Geometric,
         };
 
         let mut cache: Vec<u8> = Vec::new();
@@ -178,6 +179,7 @@ mod tests {
             max_depth: 6,
             min_split_gain: 0.1,
             n_bins: 0,
+            booster: Booster::Geometric,
         };
 
         let mut cache: Vec<u8> = Vec::new();

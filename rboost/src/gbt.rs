@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::math::cosine_simularity;
 use crate::{min_diff_vectors, Booster, Dataset, Loss, Node, Params, StridedVecView};
+use rand::prelude::Rng;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT<L: Loss> {
@@ -19,14 +20,21 @@ impl<L: Loss> GBT<L> {
         valid_set: Option<&Dataset>,
         early_stopping_rounds: usize,
         loss: L,
+        rng: &mut impl Rng,
     ) -> GBT<L> {
         let mut o = GBT {
             models: Vec::new(),
             params: (*params).clone(),
             best_iteration: 0,
-            loss: loss,
+            loss,
         };
-        o.train(train_set, num_boost_round, valid_set, early_stopping_rounds);
+        o.train(
+            train_set,
+            num_boost_round,
+            valid_set,
+            early_stopping_rounds,
+            rng,
+        );
         o
     }
 
@@ -36,6 +44,7 @@ impl<L: Loss> GBT<L> {
         num_boost_round: usize,
         valid: Option<&Dataset>,
         early_stopping_rounds: usize,
+        rng: &mut impl Rng,
     ) {
         // Check we have no NAN in input
         for &x in train.features.flat() {
@@ -74,6 +83,7 @@ impl<L: Loss> GBT<L> {
         let indices: Vec<usize> = (0..train.target.len()).collect();
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores);
+            train.update_columns(self.params.colsample_bytree, true, rng);
             let mut learner = Node::build(
                 &train,
                 &indices,

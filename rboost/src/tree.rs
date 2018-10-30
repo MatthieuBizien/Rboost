@@ -124,15 +124,9 @@ mod tests {
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();
 
-        let params = Params {
-            gamma: 0.,
-            lambda: 1.,
-            learning_rate: 0.99,
-            max_depth: 6,
-            min_split_gain: 0.1,
-            n_bins: 10_000,
-            booster: Booster::Geometric,
-        };
+        let mut params = Params::new();
+        params.max_depth = 6;
+        params.n_bins = 10_000;
 
         let mut cache: Vec<u8> = Vec::new();
         let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);
@@ -172,15 +166,9 @@ mod tests {
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();
 
-        let params = Params {
-            gamma: 0.,
-            lambda: 1.,
-            learning_rate: 0.99,
-            max_depth: 6,
-            min_split_gain: 0.1,
-            n_bins: 0,
-            booster: Booster::Geometric,
-        };
+        let mut params = Params::new();
+        params.max_depth = 6;
+        params.n_bins = 0;
 
         let mut cache: Vec<u8> = Vec::new();
         let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);

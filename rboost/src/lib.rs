@@ -34,6 +34,7 @@ pub static DEFAULT_LEARNING_RATE: f64 = 0.8;
 pub static DEFAULT_MAX_DEPTH: usize = 3;
 pub static DEFAULT_MIN_SPLIT_GAIN: f64 = 0.1;
 pub static DEFAULT_N_BINS: usize = 256;
+pub static DEFAULT_COLSAMPLE_BYTREE: f64 = 1.;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Booster {
@@ -51,6 +52,7 @@ pub struct Params {
     pub min_split_gain: f64,
     pub n_bins: usize,
     pub booster: Booster,
+    pub colsample_bytree: f64,
 }
 
 impl Params {
@@ -63,6 +65,7 @@ impl Params {
             min_split_gain: DEFAULT_MIN_SPLIT_GAIN,
             n_bins: DEFAULT_N_BINS,
             booster: Booster::Geometric,
+            colsample_bytree: DEFAULT_COLSAMPLE_BYTREE,
         }
     }
 }

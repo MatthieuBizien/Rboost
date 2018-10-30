@@ -7,6 +7,7 @@ extern crate rboost;
 extern crate serde_json;
 
 use cpuprofiler::PROFILER;
+use rand::prelude::{SeedableRng, SmallRng};
 use rboost::{parse_csv, rmse, Booster, Params, RegLoss, GBT};
 use std::fs::File;
 use std::io::Write;
@@ -18,6 +19,10 @@ fn main() {
     let test = include_str!("../data/regression.test");
     let test = parse_csv(test, "\t").expect("Train data");
 
+    let seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; // byte array
+    // let mut rng = ::rand::thread_rng();
+    let mut rng = SmallRng::from_seed(seed);
+
     let params = Params {
         gamma: 1.,
         lambda: 10.,
@@ -26,6 +31,7 @@ fn main() {
         min_split_gain: 1.,
         n_bins: 2048,
         booster: Booster::Geometric,
+        colsample_bytree: 0.95,
     };
     println!("Params {:?}", params);
     println!("Profiling to example1.profile");
@@ -34,7 +40,15 @@ fn main() {
         .unwrap()
         .start("./example1.profile")
         .unwrap();
-    let gbt = GBT::build(&params, &train, 1000, Some(&test), 1000, RegLoss::default());
+    let gbt = GBT::build(
+        &params,
+        &train,
+        1000,
+        Some(&test),
+        1000,
+        RegLoss::default(),
+        &mut rng,
+    );
     PROFILER.lock().unwrap().stop().unwrap();
 
     let n_preds = 10;

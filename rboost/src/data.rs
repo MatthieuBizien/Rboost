@@ -2,6 +2,8 @@ use crate::losses::Loss;
 use crate::{ColumnMajorMatrix, StridedVecView};
 use failure::Error;
 use ord_subset::OrdSubsetSliceExtMut;
+use rand::prelude::Rng;
+use rand::seq::sample_slice;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
 
@@ -156,5 +158,23 @@ impl<'a> TrainDataSet<'a> {
         let (grad, hessian) = loss.calc_gradient(&self.target, &predictions);
         self.grad = grad;
         self.hessian = hessian;
+    }
+
+    pub(crate) fn update_columns(
+        &mut self,
+        colsample_bytree: f64,
+        reset: bool,
+        rng: &mut impl Rng,
+    ) {
+        if reset {
+            self.columns = (0..self.features.n_cols()).collect();
+        }
+        let n_cols_f64 = colsample_bytree * (self.features.n_cols() as f64);
+        let mut n_cols = n_cols_f64.floor() as usize;
+        // Randomly select N or N+1 column proportionally to the difference
+        if (n_cols_f64 - n_cols as f64) > rng.gen() {
+            n_cols += 1;
+        }
+        self.columns = sample_slice(rng, self.columns.as_slice(), n_cols);
     }
 }

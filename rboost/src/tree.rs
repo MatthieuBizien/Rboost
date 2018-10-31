@@ -119,7 +119,8 @@ mod tests {
         let loss = RegLoss::default();
         let mut train = train.as_train_data(128);
         let zero_vec: Vec<_> = train.target.iter().map(|_| 0.).collect();
-        train.update_grad_hessian(&loss, &zero_vec);
+        let sample_weights: Vec<_> = train.target.iter().map(|_| 1.).collect();
+        train.update_grad_hessian(&loss, &zero_vec, &sample_weights);
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();
@@ -161,7 +162,8 @@ mod tests {
         let loss = RegLoss::default();
         let mut train = train.as_train_data(128);
         let zero_vec: Vec<_> = train.target.iter().map(|_| 0.).collect();
-        train.update_grad_hessian(&loss, &zero_vec);
+        let sample_weights: Vec<_> = train.target.iter().map(|_| 1.).collect();
+        train.update_grad_hessian(&loss, &zero_vec, &sample_weights);
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();

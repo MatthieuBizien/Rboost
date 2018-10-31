@@ -12,6 +12,10 @@ pub fn mean(v: &[f64]) -> f64 {
     sum(&v) / (v.len() as f64)
 }
 
+pub fn prod_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
+    a.iter().zip(b).map(|(&a, &b)| a * b).collect()
+}
+
 pub fn rmse(target: &[f64], yhat: &[f64]) -> f64 {
     let rmse: f64 = yhat
         .iter()

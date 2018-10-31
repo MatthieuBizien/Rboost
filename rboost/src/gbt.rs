@@ -81,8 +81,9 @@ impl<L: Loss> GBT<L> {
         let mut tree_predictions: Vec<_> = (0..train.target.len()).map(|_| 0.).collect();
         let mut cache = Vec::new();
         let indices: Vec<usize> = (0..train.target.len()).collect();
+        let sample_weights: Vec<_> = (0..train.target.len()).map(|_| 1.).collect();
         for iter_cnt in 0..(num_boost_round) {
-            train.update_grad_hessian(&self.loss, &train_scores);
+            train.update_grad_hessian(&self.loss, &train_scores, &sample_weights);
             train.update_columns(self.params.colsample_bytree, true, rng);
             let mut learner = Node::build(
                 &train,

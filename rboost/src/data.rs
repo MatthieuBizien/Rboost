@@ -1,5 +1,5 @@
 use crate::losses::Loss;
-use crate::{ColumnMajorMatrix, StridedVecView};
+use crate::{prod_vec, ColumnMajorMatrix, StridedVecView};
 use failure::Error;
 use ord_subset::OrdSubsetSliceExtMut;
 use rand::prelude::Rng;
@@ -154,10 +154,16 @@ pub(crate) struct TrainDataSet<'a> {
 }
 
 impl<'a> TrainDataSet<'a> {
-    pub(crate) fn update_grad_hessian(&mut self, loss: &impl Loss, predictions: &[f64]) {
+    pub(crate) fn update_grad_hessian(
+        &mut self,
+        loss: &impl Loss,
+        predictions: &[f64],
+        sample_weights: &[f64],
+    ) {
+        assert_eq!(predictions.len(), sample_weights.len());
         let (grad, hessian) = loss.calc_gradient(&self.target, &predictions);
-        self.grad = grad;
-        self.hessian = hessian;
+        self.grad = prod_vec(&grad, sample_weights);
+        self.hessian = prod_vec(&hessian, sample_weights);
     }
 
     pub(crate) fn update_columns(

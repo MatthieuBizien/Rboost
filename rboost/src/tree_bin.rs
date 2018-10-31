@@ -181,6 +181,7 @@ pub(crate) fn build_bins<'a>(
     let sum_grad = sum_indices(&train.grad, indices);
     let sum_hessian = sum_indices(&train.hessian, indices);
 
+    // We create the cache for computing the gradients and hessians per feature without allocation
     let (grads_hessians, cache) = match grads_hessians {
         None => {
             let n_elements = n_elements_per_node(&train);

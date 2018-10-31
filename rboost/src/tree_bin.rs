@@ -1,5 +1,6 @@
 use crate::{
-    split_at_mut_transmute, sub_vec, sum_indices, LeafNode, Node, Params, SplitNode, TrainDataSet,
+    split_at_mut_transmute, sub_vec, sum_indices, LeafNode, Node, SplitNode, TrainDataSet,
+    TreeParams,
 };
 use ord_subset::OrdSubsetIterExt;
 //use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -46,7 +47,7 @@ fn update_grad_hessian(
 fn calc_gain_bins(
     sum_grad: f64,
     sum_hessian: f64,
-    params: &Params,
+    params: &TreeParams,
     feature_id: usize,
     grads: &[f64],
     hessians: &[f64],
@@ -107,7 +108,7 @@ fn get_best_split_bins(
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
-    params: &Params,
+    params: &TreeParams,
     grads_hessians: &mut [f64],
 ) -> Option<SplitResult> {
     let caches: Vec<_> = split_grads_hessians(&train.columns, &train.n_bins, grads_hessians);
@@ -160,7 +161,7 @@ pub(crate) fn build_bins<'a>(
     indices: &[usize],
     predictions: &mut [f64],
     depth: usize,
-    params: &Params,
+    params: &TreeParams,
     cache: &'a mut [u8],
     grads_hessians: Option<&mut [f64]>,
 ) -> (Box<Node>, Option<&'a [f64]>) {
@@ -260,6 +261,6 @@ pub(crate) fn n_elements_per_node(train: &TrainDataSet) -> usize {
     train.n_bins.iter().sum::<usize>() * size_of::<f64>() * 2
 }
 
-pub(crate) fn get_cache_size_bin(train: &TrainDataSet, params: &Params) -> usize {
+pub(crate) fn get_cache_size_bin(train: &TrainDataSet, params: &TreeParams) -> usize {
     n_elements_per_node(train) * size_of::<f64>() * params.max_depth
 }

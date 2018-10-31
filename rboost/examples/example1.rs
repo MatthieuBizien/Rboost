@@ -8,7 +8,7 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use rand::prelude::{SeedableRng, SmallRng};
-use rboost::{parse_csv, rmse, Booster, Params, RegLoss, GBT};
+use rboost::{parse_csv, rmse, Booster, BoosterParams, RegLoss, TreeParams, GBT};
 use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
@@ -20,20 +20,24 @@ fn main() {
     let test = parse_csv(test, "\t").expect("Train data");
 
     let seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; // byte array
-    // let mut rng = ::rand::thread_rng();
     let mut rng = SmallRng::from_seed(seed);
 
-    let params = Params {
-        gamma: 1.,
-        lambda: 10.,
+    let booster_params = BoosterParams {
         learning_rate: 0.97,
-        max_depth: 3,
-        min_split_gain: 1.,
-        n_bins: 2048,
         booster: Booster::Geometric,
         colsample_bytree: 0.95,
     };
-    println!("Params {:?}", params);
+    let tree_params = TreeParams {
+        gamma: 1.,
+        lambda: 10.,
+        max_depth: 3,
+        min_split_gain: 1.,
+    };
+    let n_bins = 2048;
+    println!(
+        "Params booster={:?} tree{:?} n_bins={}",
+        booster_params, tree_params, n_bins
+    );
     println!("Profiling to example1.profile");
     PROFILER
         .lock()
@@ -41,8 +45,9 @@ fn main() {
         .start("./example1.profile")
         .unwrap();
     let gbt = GBT::build(
-        &params,
-        &train,
+        &booster_params,
+        &tree_params,
+        &mut train.as_train_data(n_bins),
         1000,
         Some(&test),
         1000,

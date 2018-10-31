@@ -109,7 +109,7 @@ impl Dataset {
             .collect()
     }
 
-    pub(crate) fn as_train_data(&self, n_bins: usize) -> TrainDataSet {
+    pub fn as_train_data(&self, n_bins: usize) -> TrainDataSet {
         let sorted_features = self.sort_features();
         let (bins, n_bins) = Dataset::bin_features(&sorted_features, n_bins);
 
@@ -141,16 +141,16 @@ impl Dataset {
     }
 }
 
-pub(crate) struct TrainDataSet<'a> {
-    pub features: &'a ColumnMajorMatrix<f64>,
-    pub columns: Vec<usize>,
+pub struct TrainDataSet<'a> {
+    pub(crate) features: &'a ColumnMajorMatrix<f64>,
+    pub(crate) columns: Vec<usize>,
     pub target: &'a Vec<f64>,
-    pub grad: Vec<f64>,
-    pub hessian: Vec<f64>,
-    pub sorted_features: ColumnMajorMatrix<usize>,
-    pub bins: ColumnMajorMatrix<BinType>,
-    pub n_bins: Vec<usize>,
-    pub threshold_vals: Vec<Vec<f64>>,
+    pub(crate) grad: Vec<f64>,
+    pub(crate) hessian: Vec<f64>,
+    pub(crate) sorted_features: ColumnMajorMatrix<usize>,
+    pub(crate) bins: ColumnMajorMatrix<BinType>,
+    pub(crate) n_bins: Vec<usize>,
+    pub(crate) threshold_vals: Vec<Vec<f64>>,
 }
 
 impl<'a> TrainDataSet<'a> {

@@ -1,21 +1,49 @@
 use std::time::Instant;
 
-use crate::math::cosine_simularity;
-use crate::{min_diff_vectors, Booster, Dataset, Loss, Node, Params, StridedVecView};
+use crate::{
+    cosine_simularity, min_diff_vectors, Dataset, Loss, Node, StridedVecView, TrainDataSet,
+    TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
+};
 use rand::prelude::Rng;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Booster {
+    Geometric,
+    CosineSimilarity,
+    MinDiffVectors,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BoosterParams {
+    pub learning_rate: f64,
+    pub booster: Booster,
+    pub colsample_bytree: f64,
+}
+
+impl BoosterParams {
+    pub fn new() -> Self {
+        BoosterParams {
+            learning_rate: DEFAULT_LEARNING_RATE,
+            booster: Booster::Geometric,
+            colsample_bytree: DEFAULT_COLSAMPLE_BYTREE,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT<L: Loss> {
     models: Vec<Node>,
-    params: Params,
+    booster_params: BoosterParams,
+    tree_params: TreeParams,
     best_iteration: usize,
     loss: L,
 }
 
 impl<L: Loss> GBT<L> {
     pub fn build(
-        params: &Params,
-        train_set: &Dataset,
+        booster_params: &BoosterParams,
+        tree_params: &TreeParams,
+        train_set: &mut TrainDataSet,
         num_boost_round: usize,
         valid_set: Option<&Dataset>,
         early_stopping_rounds: usize,
@@ -24,7 +52,8 @@ impl<L: Loss> GBT<L> {
     ) -> GBT<L> {
         let mut o = GBT {
             models: Vec::new(),
-            params: (*params).clone(),
+            booster_params: (*booster_params).clone(),
+            tree_params: (*tree_params).clone(),
             best_iteration: 0,
             loss,
         };
@@ -40,7 +69,7 @@ impl<L: Loss> GBT<L> {
 
     fn train(
         &mut self,
-        train: &Dataset,
+        train: &mut TrainDataSet,
         num_boost_round: usize,
         valid: Option<&Dataset>,
         early_stopping_rounds: usize,
@@ -52,7 +81,7 @@ impl<L: Loss> GBT<L> {
                 panic!("Found NAN in the features")
             }
         }
-        for &x in &train.target {
+        for &x in train.target {
             if x.is_nan() {
                 panic!("Found NAN in the features")
             }
@@ -62,7 +91,6 @@ impl<L: Loss> GBT<L> {
         let mut best_iteration = 0;
         let mut best_val_loss = None;
         let train_start_time = Instant::now();
-        let mut train = train.as_train_data(self.params.n_bins);
         println!(
             "Features sorted in {:.03}s",
             train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
@@ -84,15 +112,15 @@ impl<L: Loss> GBT<L> {
         let sample_weights: Vec<_> = (0..train.target.len()).map(|_| 1.).collect();
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores, &sample_weights);
-            train.update_columns(self.params.colsample_bytree, true, rng);
+            train.update_columns(self.booster_params.colsample_bytree, true, rng);
             let mut learner = Node::build(
                 &train,
                 &indices,
                 &mut tree_predictions,
-                &self.params,
+                &self.tree_params,
                 &mut cache,
             );
-            let alpha = match self.params.booster {
+            let alpha = match self.booster_params.booster {
                 Booster::CosineSimilarity => {
                     shrinkage_rate * cosine_simularity(&train.grad, &tree_predictions)
                 }
@@ -103,7 +131,7 @@ impl<L: Loss> GBT<L> {
             };
             learner.apply_shrinking(alpha);
 
-            shrinkage_rate *= self.params.learning_rate;
+            shrinkage_rate *= self.booster_params.learning_rate;
             for (i, val) in learner.par_predict(&train.features).into_iter().enumerate() {
                 train_scores[i] += val;
             }

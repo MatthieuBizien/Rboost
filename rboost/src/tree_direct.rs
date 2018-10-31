@@ -1,4 +1,4 @@
-use crate::{sum_indices, transmute_vec, LeafNode, Node, Params, SplitNode, TrainDataSet};
+use crate::{sum_indices, transmute_vec, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
 use ord_subset::OrdSubsetIterExt;
 //use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
@@ -18,7 +18,7 @@ fn calc_gain_direct(
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
-    params: &Params,
+    params: &TreeParams,
     feature_id: usize,
     cache: &mut [u8],
 ) -> Option<SplitResult> {
@@ -85,7 +85,7 @@ fn get_best_split_direct(
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
-    params: &Params,
+    params: &TreeParams,
     cache: &mut [u8],
 ) -> Option<SplitResult> {
     let cache: Vec<_> = cache
@@ -117,7 +117,7 @@ pub(crate) fn build_direct(
     indices: &[usize],
     predictions: &mut [f64],
     depth: usize,
-    params: &Params,
+    params: &TreeParams,
     cache: &mut [u8],
 ) -> Node {
     macro_rules! return_leaf {

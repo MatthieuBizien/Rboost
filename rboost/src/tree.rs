@@ -1,7 +1,29 @@
-use crate::{sum_indices, ColumnMajorMatrix, Params, StridedVecView, TrainDataSet};
+use crate::{
+    sum_indices, ColumnMajorMatrix, StridedVecView, TrainDataSet, DEFAULT_GAMMA, DEFAULT_LAMBDA,
+    DEFAULT_MAX_DEPTH, DEFAULT_MIN_SPLIT_GAIN,
+};
 //use rayon::prelude::ParallelIterator;
 use crate::tree_bin::{build_bins, get_cache_size_bin};
 use crate::tree_direct::{build_direct, get_cache_size_direct};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TreeParams {
+    pub gamma: f64,
+    pub lambda: f64,
+    pub max_depth: usize,
+    pub min_split_gain: f64,
+}
+
+impl TreeParams {
+    pub fn new() -> Self {
+        TreeParams {
+            gamma: DEFAULT_GAMMA,
+            lambda: DEFAULT_LAMBDA,
+            max_depth: DEFAULT_MAX_DEPTH,
+            min_split_gain: DEFAULT_MIN_SPLIT_GAIN,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct SplitNode {
@@ -56,11 +78,12 @@ impl Node {
         train: &TrainDataSet,
         indices: &[usize],
         predictions: &mut [f64],
-        params: &Params,
+        params: &TreeParams,
         cache: &mut Vec<u8>,
     ) -> Node {
         let depth = 0;
-        if params.n_bins > 0 {
+        let has_bins = train.n_bins.iter().any(|&n_bins| n_bins > 0);
+        if has_bins {
             cache.resize(get_cache_size_bin(&train, &params), 0);
             let (boxed_node, _) =
                 build_bins(train, indices, predictions, depth, params, cache, None);
@@ -125,9 +148,8 @@ mod tests {
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();
 
-        let mut params = Params::new();
+        let mut params = TreeParams::new();
         params.max_depth = 6;
-        params.n_bins = 10_000;
 
         let mut cache: Vec<u8> = Vec::new();
         let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);
@@ -168,9 +190,8 @@ mod tests {
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();
 
-        let mut params = Params::new();
+        let mut params = TreeParams::new();
         params.max_depth = 6;
-        params.n_bins = 0;
 
         let mut cache: Vec<u8> = Vec::new();
         let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);

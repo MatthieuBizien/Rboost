@@ -1,8 +1,9 @@
 use crate::{
-    sum_indices, ColumnMajorMatrix, StridedVecView, TrainDataSet, DEFAULT_GAMMA, DEFAULT_LAMBDA,
-    DEFAULT_MAX_DEPTH, DEFAULT_MIN_SPLIT_GAIN,
+    sum_indices, ColumnMajorMatrix, PreparedDataSet, StridedVecView, TrainDataSet, DEFAULT_GAMMA,
+    DEFAULT_LAMBDA, DEFAULT_MAX_DEPTH, DEFAULT_MIN_SPLIT_GAIN,
 };
 //use rayon::prelude::ParallelIterator;
+use crate::losses::Loss;
 use crate::tree_bin::{build_bins, get_cache_size_bin};
 use crate::tree_direct::{build_direct, get_cache_size_direct};
 
@@ -26,7 +27,7 @@ impl TreeParams {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct SplitNode {
+pub struct SplitNode {
     pub(crate) left_child: Box<Node>,
     pub(crate) right_child: Box<Node>,
     pub(crate) split_feature_id: usize,
@@ -34,12 +35,12 @@ pub(crate) struct SplitNode {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct LeafNode {
+pub struct LeafNode {
     pub(crate) val: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub(crate) enum Node {
+pub enum Node {
     Split(SplitNode),
     Leaf(LeafNode),
 }
@@ -74,7 +75,7 @@ impl Node {
         return sum_indices(grad, indices) / (sum_indices(hessian, indices) + lambda);
     }
 
-    pub fn build(
+    pub(crate) fn build_from_train_data(
         train: &TrainDataSet,
         indices: &[usize],
         predictions: &mut [f64],
@@ -92,6 +93,18 @@ impl Node {
             cache.resize(get_cache_size_direct(&train), 0);
             build_direct(train, indices, predictions, depth, params, cache)
         }
+    }
+
+    pub fn build(
+        train: &PreparedDataSet,
+        indices: &[usize],
+        predictions: &mut [f64],
+        params: &TreeParams,
+        cache: &mut Vec<u8>,
+        loss: &impl Loss,
+    ) -> Node {
+        let train = train.as_train_data(loss);
+        Self::build_from_train_data(&train, indices, predictions, params, cache)
     }
 
     pub fn apply_shrinking(&mut self, shrinkage_rate: f64) {
@@ -140,10 +153,7 @@ mod tests {
         let test = parse_csv(test, "\t").expect("Train data");
 
         let loss = RegLoss::default();
-        let mut train = train.as_train_data(128);
-        let zero_vec: Vec<_> = train.target.iter().map(|_| 0.).collect();
-        let sample_weights: Vec<_> = train.target.iter().map(|_| 1.).collect();
-        train.update_grad_hessian(&loss, &zero_vec, &sample_weights);
+        let train = train.as_prepared_data(128);
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();
@@ -152,7 +162,14 @@ mod tests {
         params.max_depth = 6;
 
         let mut cache: Vec<u8> = Vec::new();
-        let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);
+        let tree = Node::build(
+            &train,
+            &indices,
+            &mut predictions,
+            &params,
+            &mut cache,
+            &loss,
+        );
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -182,10 +199,7 @@ mod tests {
         let test = parse_csv(test, "\t").expect("Train data");
 
         let loss = RegLoss::default();
-        let mut train = train.as_train_data(128);
-        let zero_vec: Vec<_> = train.target.iter().map(|_| 0.).collect();
-        let sample_weights: Vec<_> = train.target.iter().map(|_| 1.).collect();
-        train.update_grad_hessian(&loss, &zero_vec, &sample_weights);
+        let train = train.as_prepared_data(0);
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();
@@ -194,7 +208,14 @@ mod tests {
         params.max_depth = 6;
 
         let mut cache: Vec<u8> = Vec::new();
-        let tree = Node::build(&train, &indices, &mut predictions, &params, &mut cache);
+        let tree = Node::build(
+            &train,
+            &indices,
+            &mut predictions,
+            &params,
+            &mut cache,
+            &loss,
+        );
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {

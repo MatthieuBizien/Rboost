@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use crate::{
-    cosine_simularity, min_diff_vectors, Dataset, Loss, Node, StridedVecView, TrainDataSet,
-    TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
+    cosine_simularity, min_diff_vectors, Dataset, Loss, Node, PreparedDataSet, StridedVecView,
+    TrainDataSet, TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
 };
 use rand::prelude::Rng;
 
@@ -43,7 +43,7 @@ impl<L: Loss> GBT<L> {
     pub fn build(
         booster_params: &BoosterParams,
         tree_params: &TreeParams,
-        train_set: &mut TrainDataSet,
+        train_set: &mut PreparedDataSet,
         num_boost_round: usize,
         valid_set: Option<&Dataset>,
         early_stopping_rounds: usize,
@@ -58,7 +58,7 @@ impl<L: Loss> GBT<L> {
             loss,
         };
         o.train(
-            train_set,
+            &mut train_set.as_train_data(&o.loss),
             num_boost_round,
             valid_set,
             early_stopping_rounds,
@@ -113,7 +113,7 @@ impl<L: Loss> GBT<L> {
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores, &sample_weights);
             train.update_columns(self.booster_params.colsample_bytree, true, rng);
-            let mut learner = Node::build(
+            let mut learner = Node::build_from_train_data(
                 &train,
                 &indices,
                 &mut tree_predictions,

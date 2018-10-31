@@ -47,7 +47,7 @@ fn main() {
     let gbt = GBT::build(
         &booster_params,
         &tree_params,
-        &mut train.as_train_data(n_bins),
+        &mut train.as_prepared_data(n_bins),
         1000,
         Some(&test),
         1000,

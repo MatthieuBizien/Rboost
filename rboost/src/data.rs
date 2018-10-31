@@ -6,6 +6,7 @@ use rand::prelude::Rng;
 use rand::seq::sample_slice;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
+use std::ops::Deref;
 
 type BinType = u32;
 
@@ -109,7 +110,7 @@ impl Dataset {
             .collect()
     }
 
-    pub fn as_train_data(&self, n_bins: usize) -> TrainDataSet {
+    pub fn as_prepared_data(&self, n_bins: usize) -> PreparedDataSet {
         let sorted_features = self.sort_features();
         let (bins, n_bins) = Dataset::bin_features(&sorted_features, n_bins);
 
@@ -125,14 +126,9 @@ impl Dataset {
             .map(|((values, bins), &n_bin)| Self::get_threshold_vals(values, bins, n_bin))
             .collect();
 
-        let columns = (0..self.features.n_cols()).collect();
-
-        TrainDataSet {
+        PreparedDataSet {
             features: &self.features,
-            columns,
             target: &self.target,
-            grad: Vec::new(),
-            hessian: Vec::new(),
             sorted_features,
             bins,
             n_bins,
@@ -141,16 +137,44 @@ impl Dataset {
     }
 }
 
-pub struct TrainDataSet<'a> {
+pub struct PreparedDataSet<'a> {
     pub(crate) features: &'a ColumnMajorMatrix<f64>,
-    pub(crate) columns: Vec<usize>,
     pub target: &'a Vec<f64>,
-    pub(crate) grad: Vec<f64>,
-    pub(crate) hessian: Vec<f64>,
     pub(crate) sorted_features: ColumnMajorMatrix<usize>,
     pub(crate) bins: ColumnMajorMatrix<BinType>,
     pub(crate) n_bins: Vec<usize>,
     pub(crate) threshold_vals: Vec<Vec<f64>>,
+}
+
+impl<'a> PreparedDataSet<'a> {
+    pub(crate) fn as_train_data(&'a self, loss: &impl Loss) -> TrainDataSet<'a> {
+        let zero_vec: Vec<_> = self.target.iter().map(|_| 0.).collect();
+        let weights: Vec<_> = self.target.iter().map(|_| 1.).collect();
+        let columns: Vec<_> = (0..self.features.n_cols()).collect();
+        let mut train = TrainDataSet {
+            grad: zero_vec.clone(),
+            hessian: zero_vec.clone(),
+            columns,
+            data: self,
+        };
+        train.update_grad_hessian(loss, &zero_vec, &weights);
+        train
+    }
+}
+
+pub(crate) struct TrainDataSet<'a> {
+    pub(crate) grad: Vec<f64>,
+    pub(crate) hessian: Vec<f64>,
+    pub(crate) columns: Vec<usize>,
+    pub(crate) data: &'a PreparedDataSet<'a>,
+}
+
+// With Deref we can use train_data_set.X if X is an attribute of PreparedDataSet
+impl<'a> Deref for TrainDataSet<'a> {
+    type Target = PreparedDataSet<'a>;
+    fn deref(&self) -> &Self::Target {
+        self.data
+    }
 }
 
 impl<'a> TrainDataSet<'a> {

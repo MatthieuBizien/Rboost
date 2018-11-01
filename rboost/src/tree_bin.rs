@@ -1,11 +1,15 @@
+use crate::tree_direct::build_direct;
 use crate::{
     split_at_mut_transmute, sub_vec, sum_indices, LeafNode, Node, SplitNode, TrainDataSet,
     TreeParams,
 };
 use ord_subset::OrdSubsetIterExt;
-//use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
 use std::mem::size_of;
+
+// Minimum number of rows before it's faster to use the direct algorithm
+static MIN_ROWS_FOR_BINNING: usize = 100;
+
 
 /// Store the result of a successful split on a node
 struct SplitResult {
@@ -165,6 +169,11 @@ pub(crate) fn build_bins<'a>(
     cache: &'a mut [u8],
     grads_hessians: Option<&mut [f64]>,
 ) -> (Box<Node>, Option<&'a [f64]>) {
+    // If the number of indices is too small it's faster to just use the direct algorithm
+    if indices.len() <= MIN_ROWS_FOR_BINNING {
+        let node = build_direct(train, indices, predictions, depth, params, cache);
+        return (Box::new(node), None);
+    }
     macro_rules! return_leaf {
         () => {{
             let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices);

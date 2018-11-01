@@ -1,6 +1,6 @@
 use crate::sum;
 
-pub trait Loss {
+pub trait Loss: std::marker::Sync {
     fn calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>);
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64;
 }

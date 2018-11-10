@@ -1,15 +1,11 @@
 use crate::tree_direct::build_direct;
-use crate::{
-    split_at_mut_transmute, sub_vec, sum_indices, LeafNode, Node, SplitNode, TrainDataSet,
-    TreeParams,
-};
+use crate::{sum_indices, transmute_vec, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
 use ord_subset::OrdSubsetIterExt;
 use std::f64::INFINITY;
 use std::mem::size_of;
 
 // Minimum number of rows before it's faster to use the direct algorithm
 static MIN_ROWS_FOR_BINNING: usize = 100;
-
 
 /// Store the result of a successful split on a node
 struct SplitResult {
@@ -169,6 +165,8 @@ pub(crate) fn build_bins<'a>(
     cache: &'a mut [u8],
     grads_hessians: Option<&mut [f64]>,
 ) -> (Box<Node>, Option<&'a [f64]>) {
+    assert_eq!(grads_hessians, None);
+
     // If the number of indices is too small it's faster to just use the direct algorithm
     if indices.len() <= MIN_ROWS_FOR_BINNING {
         let node = build_direct(train, indices, predictions, depth, params, cache);
@@ -191,23 +189,17 @@ pub(crate) fn build_bins<'a>(
     let sum_grad = sum_indices(&train.grad, indices);
     let sum_hessian = sum_indices(&train.hessian, indices);
 
-    // We create the cache for computing the gradients and hessians per feature without allocation
-    let (grads_hessians, cache) = match grads_hessians {
-        None => {
-            let n_elements = n_elements_per_node(&train);
-            split_at_mut_transmute::<f64>(cache, n_elements)
-        }
-        Some(e) => (e, cache),
-    };
-
-    let best_result = get_best_split_bins(
-        train,
-        indices,
-        sum_grad,
-        sum_hessian,
-        params,
-        grads_hessians,
-    );
+    let best_result;
+    {
+        best_result = get_best_split_bins(
+            train,
+            indices,
+            sum_grad,
+            sum_hessian,
+            params,
+            transmute_vec(cache),
+        );
+    }
 
     let best_result: SplitResult = match best_result {
         Some(e) => e,
@@ -218,44 +210,25 @@ pub(crate) fn build_bins<'a>(
         return_leaf!();
     }
 
-    let get_childs = |first_indices, second_indices| {
-        let (first_child, first_grad_hessian) = build_bins(
-            &train,
-            first_indices,
-            predictions,
-            depth + 1,
-            &params,
-            cache,
-            None,
-        );
+    let left_child = build_bins(
+        &train,
+        &best_result.left_indices,
+        predictions,
+        depth + 1,
+        &params,
+        cache,
+        None,
+    ).0;
 
-        let second_grad_hessian = match first_grad_hessian {
-            None => None,
-            Some(e) => {
-                sub_vec(grads_hessians, e);
-                Some(grads_hessians)
-            }
-        };
-
-        let (second_child, _) = build_bins(
-            &train,
-            second_indices,
-            predictions,
-            depth + 1,
-            &params,
-            cache,
-            second_grad_hessian,
-        );
-        (first_child, second_child)
-    };
-
-    let (left_child, right_child) =
-        if best_result.left_indices.len() < best_result.right_indices.len() {
-            get_childs(&best_result.left_indices, &best_result.right_indices)
-        } else {
-            let childs = get_childs(&best_result.right_indices, &best_result.left_indices);
-            (childs.1, childs.0)
-        };
+    let right_child = build_bins(
+        &train,
+        &best_result.right_indices,
+        predictions,
+        depth + 1,
+        &params,
+        cache,
+        None,
+    ).0;
 
     let node = Box::new(Node::Split(SplitNode {
         left_child,
@@ -270,6 +243,6 @@ pub(crate) fn n_elements_per_node(train: &TrainDataSet) -> usize {
     train.n_bins.iter().sum::<usize>() * size_of::<f64>() * 2
 }
 
-pub(crate) fn get_cache_size_bin(train: &TrainDataSet, params: &TreeParams) -> usize {
-    n_elements_per_node(train) * size_of::<f64>() * params.max_depth
+pub(crate) fn get_cache_size_bin(train: &TrainDataSet, _params: &TreeParams) -> usize {
+    n_elements_per_node(train)
 }

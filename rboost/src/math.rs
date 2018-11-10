@@ -41,6 +41,7 @@ pub(crate) fn transmute_vec<T: Sized + Clone>(v: &mut [u8]) -> &mut [T] {
     unsafe { std::slice::from_raw_parts_mut(v.as_ptr() as *mut T, v.len() / size_of::<T>()) }
 }
 
+#[allow(dead_code)]
 pub(crate) fn split_at_mut_transmute<T: Sized + Clone>(
     v: &mut [u8],
     n_elements: usize,
@@ -56,6 +57,7 @@ pub(crate) fn split_at_mut_transmute<T: Sized + Clone>(
     (transmute_vec(a), b)
 }
 
+#[allow(dead_code)]
 pub(crate) fn sub_vec(a: &mut [f64], b: &[f64]) {
     assert_eq!(a.len(), b.len());
     for (a, b) in a.iter_mut().zip(b.iter()) {

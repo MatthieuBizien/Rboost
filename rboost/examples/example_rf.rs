@@ -39,7 +39,7 @@ fn main() {
     println!("Profiling to {}", profile_path);
     PROFILER.lock().unwrap().start(profile_path).unwrap();
     let predict_start_time = Instant::now();
-    let gbt = RandomForest::build(
+    let (rf, yhat_cv) = RandomForest::build(
         &mut train.as_prepared_data(n_bins),
         &rf_params,
         &tree_params,
@@ -53,9 +53,11 @@ fn main() {
     );
     PROFILER.lock().unwrap().stop().unwrap();
 
+    println!("RMSE train CV {:.8}", rmse(&train.target, &yhat_cv));
+
     let predict_start_time = Instant::now();
     let yhat_train: Vec<f64> = (0..train.features.n_rows())
-        .map(|i| gbt.predict(&train.row(i)))
+        .map(|i| rf.predict(&train.row(i)))
         .collect();
     println!(
         "Predictions done in {:.2} secs",
@@ -64,12 +66,12 @@ fn main() {
     println!("RMSE train {:.8}", rmse(&train.target, &yhat_train));
 
     let yhat_test: Vec<f64> = (0..test.features.n_rows())
-        .map(|i| gbt.predict(&test.row(i)))
+        .map(|i| rf.predict(&test.row(i)))
         .collect();
     println!("RMSE Test {:.8}", rmse(&test.target, &yhat_test));
 
     println!("Serializing model to example1.json");
-    let serialized: String = serde_json::to_string(&gbt).expect("Error on JSON serialization");
+    let serialized: String = serde_json::to_string(&rf).expect("Error on JSON serialization");
     let mut file = File::create("example1.json").expect("Error on file creation");
     file.write_all(serialized.as_bytes())
         .expect("Error on writing of the JSON");

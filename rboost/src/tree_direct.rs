@@ -118,7 +118,7 @@ fn get_best_split_direct<'a>(
     cache: &'a mut [u8],
 ) -> Option<SplitResultOwned> {
     let cache: Vec<_> = cache
-        .chunks_mut(train.target.len() * size_of::<usize>())
+        .chunks_mut(indices.len() * size_of::<usize>())
         .zip(&train.columns)
         .collect();
     let results: Vec<SplitResult> = cache

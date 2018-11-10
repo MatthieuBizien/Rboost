@@ -70,7 +70,6 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
                 train.columns = columns;
 
                 let mut tree_predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
-                let mut cache = Vec::new();
 
                 // We filter the indices with non-null weights
                 let (mut train_indices, mut test_indices) = (Vec::new(), Vec::new());
@@ -88,7 +87,6 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
                     &train_indices,
                     &mut tree_predictions,
                     &tree_params,
-                    &mut cache,
                 );
 
                 // Predict and write back the predictions to the result

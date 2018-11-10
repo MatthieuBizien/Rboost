@@ -2,7 +2,6 @@ use crate::tree_direct::build_direct;
 use crate::{sum_indices, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
 use ord_subset::OrdSubsetIterExt;
 use std::f64::INFINITY;
-use std::mem::size_of;
 
 // Minimum number of rows before it's faster to use the direct algorithm
 static MIN_ROWS_FOR_BINNING: usize = 100;

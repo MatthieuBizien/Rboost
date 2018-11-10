@@ -19,29 +19,17 @@ fn bench_tree(b: &mut Bencher, n_bins: &&usize) {
     let indices: Vec<_> = (0..train.features.n_rows()).collect();
     let loss = RegLoss::default();
 
-    let large_cache = train.features.n_rows() * 100;
+    b.iter(|| {
+        let tree_params = TreeParams {
+            gamma: 1.,
+            lambda: 10.,
+            max_depth: 10,
+            min_split_gain: 1.,
+        };
 
-    b.iter_with_large_setup(
-        || Vec::with_capacity(large_cache),
-        |mut cache| {
-            let tree_params = TreeParams {
-                gamma: 1.,
-                lambda: 10.,
-                max_depth: 10,
-                min_split_gain: 1.,
-            };
-
-            let mut predictions: Vec<_> = (0..train.features.n_rows()).map(|_| 0.).collect();
-            Node::build(
-                &train,
-                &indices,
-                &mut predictions,
-                &tree_params,
-                &mut cache,
-                &loss,
-            );
-        },
-    )
+        let mut predictions: Vec<_> = (0..train.features.n_rows()).map(|_| 0.).collect();
+        Node::build(&train, &indices, &mut predictions, &tree_params, &loss);
+    })
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

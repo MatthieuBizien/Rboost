@@ -80,7 +80,6 @@ impl Node {
         indices: &[usize],
         predictions: &mut [f64],
         params: &TreeParams,
-        cache: &mut Vec<u8>,
     ) -> Node {
         let depth = 0;
         let has_bins = train.n_bins.iter().any(|&n_bins| n_bins > 0);
@@ -97,11 +96,10 @@ impl Node {
         indices: &[usize],
         predictions: &mut [f64],
         params: &TreeParams,
-        cache: &mut Vec<u8>,
         loss: &impl Loss,
     ) -> Node {
         let train = train.as_train_data(loss);
-        Self::build_from_train_data(&train, indices, predictions, params, cache)
+        Self::build_from_train_data(&train, indices, predictions, params)
     }
 
     pub fn apply_shrinking(&mut self, shrinkage_rate: f64) {
@@ -158,15 +156,7 @@ mod tests {
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let mut cache: Vec<u8> = Vec::new();
-        let tree = Node::build(
-            &train,
-            &indices,
-            &mut predictions,
-            &params,
-            &mut cache,
-            &loss,
-        );
+        let tree = Node::build(&train, &indices, &mut predictions, &params, &loss);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -204,15 +194,7 @@ mod tests {
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let mut cache: Vec<u8> = Vec::new();
-        let tree = Node::build(
-            &train,
-            &indices,
-            &mut predictions,
-            &params,
-            &mut cache,
-            &loss,
-        );
+        let tree = Node::build(&train, &indices, &mut predictions, &params, &loss);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {

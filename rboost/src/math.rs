@@ -1,6 +1,5 @@
 use rand::seq::sample_indices;
 use rand::Rng;
-use std::mem::size_of;
 
 pub fn sum(v: &[f64]) -> f64 {
     let mut o = 0.;
@@ -36,27 +35,6 @@ pub(crate) fn sum_indices(v: &[f64], indices: &[usize]) -> f64 {
         o += v[i];
     }
     o
-}
-
-pub(crate) fn transmute_vec<T: Sized + Clone>(v: &mut [u8]) -> &mut [T] {
-    assert_eq!(v.len() % size_of::<T>(), 0);
-    unsafe { std::slice::from_raw_parts_mut(v.as_ptr() as *mut T, v.len() / size_of::<T>()) }
-}
-
-#[allow(dead_code)]
-pub(crate) fn split_at_mut_transmute<T: Sized + Clone>(
-    v: &mut [u8],
-    n_elements: usize,
-) -> (&mut [T], &mut [u8]) {
-    let n_bytes = n_elements * size_of::<T>();
-    assert!(
-        v.len() >= n_bytes,
-        "cache too small, got {}, expected {}",
-        v.len(),
-        n_bytes
-    );
-    let (a, b) = v.split_at_mut(n_bytes);
-    (transmute_vec(a), b)
 }
 
 #[allow(dead_code)]

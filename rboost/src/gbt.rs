@@ -108,7 +108,6 @@ impl<L: Loss> GBT<L> {
         // Predictions per tree. We create it before  so we don't have to allocate a new vector at
         // each iteration
         let mut tree_predictions: Vec<_> = (0..train.target.len()).map(|_| 0.).collect();
-        let mut cache = Vec::new();
         let indices: Vec<usize> = (0..train.target.len()).collect();
         let sample_weights: Vec<_> = (0..train.target.len()).map(|_| 1.).collect();
 
@@ -128,7 +127,6 @@ impl<L: Loss> GBT<L> {
                 &indices,
                 &mut tree_predictions,
                 &self.tree_params,
-                &mut cache,
             );
             let alpha = match self.booster_params.booster {
                 Booster::CosineSimilarity => {

@@ -138,7 +138,7 @@ impl Dataset {
 }
 
 pub struct PreparedDataSet<'a> {
-    pub(crate) features: &'a ColumnMajorMatrix<f64>,
+    pub features: &'a ColumnMajorMatrix<f64>,
     pub target: &'a Vec<f64>,
     pub(crate) sorted_features: ColumnMajorMatrix<usize>,
     pub(crate) bins: ColumnMajorMatrix<BinType>,

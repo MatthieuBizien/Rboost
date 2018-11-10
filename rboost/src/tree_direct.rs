@@ -28,7 +28,13 @@ fn calc_gain_direct(
     sorted_instance_ids.clone_from_slice(indices);
     sorted_instance_ids.sort_unstable_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
 
-    if sorted_instance_ids.first() == sorted_instance_ids.last() {
+    // Trivial cases: the feature is constant
+    if sorted_instance_ids.is_empty() {
+        return None;
+    }
+    let first = train.features[(*sorted_instance_ids.first().unwrap(), feature_id)];
+    let last = train.features[(*sorted_instance_ids.last().unwrap(), feature_id)];
+    if first == last {
         return None;
     }
 
@@ -37,8 +43,8 @@ fn calc_gain_direct(
     let mut hessian_left = train.hessian[sorted_instance_ids[0]];
     let mut best_gain = -INFINITY;
     let mut best_idx = 0;
-    let mut best_val = train.features[(0, feature_id)];
-    let mut last_val = train.features[(0, feature_id)];
+    let mut best_val = ::std::f64::NAN;
+    let mut last_val = train.features[(sorted_instance_ids[0], feature_id)];
 
     // The potential split is before the current value, so we have to skip the first
     for (idx, &nrow) in sorted_instance_ids[..sorted_instance_ids.len()]
@@ -69,6 +75,9 @@ fn calc_gain_direct(
         grad_left += train.grad[nrow];
         hessian_left += train.hessian[nrow];
     }
+
+    // Sanity check
+    assert!(!best_val.is_nan());
 
     let (left_indices, right_indices) = sorted_instance_ids.split_at(best_idx);
     Some(SplitResult {

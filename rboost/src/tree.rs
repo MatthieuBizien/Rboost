@@ -153,7 +153,7 @@ mod tests {
         let test = parse_csv(test, "\t").expect("Train data");
 
         let loss = RegLoss::default();
-        let train = train.as_prepared_data(128);
+        let train = train.as_prepared_data(3_000);
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let indices: Vec<_> = (0..train.target.len()).collect();

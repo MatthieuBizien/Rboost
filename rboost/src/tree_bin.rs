@@ -1,5 +1,5 @@
 use crate::tree_direct::build_direct;
-use crate::{sum_indices, transmute_vec, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
+use crate::{sum_indices, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
 use ord_subset::OrdSubsetIterExt;
 use std::f64::INFINITY;
 use std::mem::size_of;
@@ -86,44 +86,29 @@ fn calc_gain_bins(
     return Some((feature_id, best_gain, best_bin));
 }
 
-fn split_grads_hessians<'a>(
-    columns: &[usize],
-    n_bins: &[usize],
-    cache: &'a mut [f64],
-) -> Vec<(usize, &'a mut [f64], &'a mut [f64])> {
-    let mut caches: Vec<_> = Vec::new();
-    let mut cache = &mut cache[..];
-    for &column in columns {
-        let size_bin = n_bins[column];
-        let (grads, cache_) = cache.split_at_mut(size_bin);
-        let (hessians, cache_) = cache_.split_at_mut(size_bin);
-        cache = cache_;
-        caches.push((column, grads, hessians));
-    }
-    caches
-}
-
 fn get_best_split_bins(
     train: &TrainDataSet,
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
     params: &TreeParams,
-    grads_hessians: &mut [f64],
 ) -> Option<SplitResult> {
-    let caches: Vec<_> = split_grads_hessians(&train.columns, &train.n_bins, grads_hessians);
-    let results: Vec<_> = caches
-        .into_iter()
-        .filter_map(|(feature_id, grads, hessians)| {
+    let results: Vec<_> = train
+        .columns
+        .iter()
+        .filter_map(|&feature_id| {
+            let n_bins = train.n_bins[feature_id];
+            let mut grads: Vec<_> = (0..n_bins).map(|_| 0.).collect();
+            let mut hessians: Vec<_> = (0..n_bins).map(|_| 0.).collect();
             let (min_bin, max_bin) =
-                update_grad_hessian(&train, &indices, feature_id, grads, hessians);
+                update_grad_hessian(&train, &indices, feature_id, &mut grads, &mut hessians);
             calc_gain_bins(
                 sum_grad,
                 sum_hessian,
                 &params,
                 feature_id,
-                grads,
-                hessians,
+                &grads,
+                &hessians,
                 min_bin,
                 max_bin,
             )
@@ -162,11 +147,7 @@ pub(crate) fn build_bins<'a>(
     predictions: &mut [f64],
     depth: usize,
     params: &TreeParams,
-    cache: &'a mut [u8],
-    grads_hessians: Option<&mut [f64]>,
 ) -> (Box<Node>, Option<&'a [f64]>) {
-    assert_eq!(grads_hessians, None);
-
     // If the number of indices is too small it's faster to just use the direct algorithm
     if indices.len() <= MIN_ROWS_FOR_BINNING {
         let node = build_direct(train, indices, predictions, depth, params);
@@ -191,14 +172,7 @@ pub(crate) fn build_bins<'a>(
 
     let best_result;
     {
-        best_result = get_best_split_bins(
-            train,
-            indices,
-            sum_grad,
-            sum_hessian,
-            params,
-            transmute_vec(cache),
-        );
+        best_result = get_best_split_bins(train, indices, sum_grad, sum_hessian, params);
     }
 
     let best_result: SplitResult = match best_result {
@@ -216,8 +190,6 @@ pub(crate) fn build_bins<'a>(
         predictions,
         depth + 1,
         &params,
-        cache,
-        None,
     ).0;
 
     let right_child = build_bins(
@@ -226,8 +198,6 @@ pub(crate) fn build_bins<'a>(
         predictions,
         depth + 1,
         &params,
-        cache,
-        None,
     ).0;
 
     let node = Box::new(Node::Split(SplitNode {
@@ -237,12 +207,4 @@ pub(crate) fn build_bins<'a>(
         split_val: best_result.best_val,
     }));
     (node, None)
-}
-
-pub(crate) fn n_elements_per_node(train: &TrainDataSet) -> usize {
-    train.n_bins.iter().sum::<usize>() * size_of::<f64>() * 2
-}
-
-pub(crate) fn get_cache_size_bin(train: &TrainDataSet, _params: &TreeParams) -> usize {
-    n_elements_per_node(train)
 }

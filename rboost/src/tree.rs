@@ -4,7 +4,7 @@ use crate::{
 };
 //use rayon::prelude::ParallelIterator;
 use crate::losses::Loss;
-use crate::tree_bin::{build_bins, get_cache_size_bin};
+use crate::tree_bin::build_bins;
 use crate::tree_direct::build_direct;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -85,9 +85,7 @@ impl Node {
         let depth = 0;
         let has_bins = train.n_bins.iter().any(|&n_bins| n_bins > 0);
         if has_bins {
-            cache.resize(get_cache_size_bin(&train, &params), 0);
-            let (boxed_node, _) =
-                build_bins(train, indices, predictions, depth, params, cache, None);
+            let (boxed_node, _) = build_bins(train, indices, predictions, depth, params);
             *boxed_node
         } else {
             build_direct(train, indices, predictions, depth, params)

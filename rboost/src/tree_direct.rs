@@ -5,7 +5,15 @@ use std::f64::INFINITY;
 use std::mem::size_of;
 
 /// Store the result of a successful split on a node
-struct SplitResult {
+struct SplitResult<'a> {
+    feature_id: usize,
+    best_val: f64,
+    best_gain: f64,
+    left_indices: &'a [usize],
+    right_indices: &'a [usize],
+}
+
+struct SplitResultOwned {
     feature_id: usize,
     best_val: f64,
     best_gain: f64,
@@ -13,15 +21,27 @@ struct SplitResult {
     right_indices: Vec<usize>,
 }
 
-fn calc_gain_direct(
+impl<'a> SplitResult<'a> {
+    fn to_owned(&self) -> SplitResultOwned {
+        SplitResultOwned {
+            feature_id: self.feature_id,
+            best_val: self.best_val,
+            best_gain: self.best_gain,
+            left_indices: self.left_indices.to_vec(),
+            right_indices: self.right_indices.to_vec(),
+        }
+    }
+}
+
+fn calc_gain_direct<'a>(
     train: &TrainDataSet,
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
     params: &TreeParams,
     feature_id: usize,
-    cache: &mut [u8],
-) -> Option<SplitResult> {
+    cache: &'a mut [u8],
+) -> Option<SplitResult<'a>> {
     // sorted_instance_ids = instances[:, feature_id].argsort()
     let sorted_instance_ids = &mut cache[0..indices.len() * size_of::<usize>()];
     let sorted_instance_ids: &mut [usize] = transmute_vec::<usize>(sorted_instance_ids);
@@ -84,19 +104,19 @@ fn calc_gain_direct(
         feature_id,
         best_val,
         best_gain,
-        left_indices: left_indices.to_vec(),
-        right_indices: right_indices.to_vec(),
+        left_indices,
+        right_indices,
     })
 }
 
-fn get_best_split_direct(
+fn get_best_split_direct<'a>(
     train: &TrainDataSet,
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
     params: &TreeParams,
-    cache: &mut [u8],
-) -> Option<SplitResult> {
+    cache: &'a mut [u8],
+) -> Option<SplitResultOwned> {
     let cache: Vec<_> = cache
         .chunks_mut(train.target.len() * size_of::<usize>())
         .zip(&train.columns)
@@ -117,9 +137,10 @@ fn get_best_split_direct(
     results
         .into_iter()
         .ord_subset_max_by_key(|result| result.best_gain)
+        .map(|e| e.to_owned())
 }
 
-/// Exact Greedy Algorithm for Split Finding
+/// Exact Greedy Algorithm for Split Findincg
 ///  (Refer to Algorithm1 of Reference[1])
 pub(crate) fn build_direct(
     train: &TrainDataSet,
@@ -148,7 +169,7 @@ pub(crate) fn build_direct(
 
     let best_result = get_best_split_direct(train, indices, sum_grad, sum_hessian, params, cache);
 
-    let best_result: SplitResult = match best_result {
+    let best_result = match best_result {
         Some(e) => e,
         None => return_leaf!(),
     };

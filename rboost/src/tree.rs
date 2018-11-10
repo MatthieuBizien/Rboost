@@ -5,7 +5,7 @@ use crate::{
 //use rayon::prelude::ParallelIterator;
 use crate::losses::Loss;
 use crate::tree_bin::{build_bins, get_cache_size_bin};
-use crate::tree_direct::{build_direct, get_cache_size_direct};
+use crate::tree_direct::build_direct;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TreeParams {
@@ -90,8 +90,7 @@ impl Node {
                 build_bins(train, indices, predictions, depth, params, cache, None);
             *boxed_node
         } else {
-            cache.resize(get_cache_size_direct(&train), 0);
-            build_direct(train, indices, predictions, depth, params, cache)
+            build_direct(train, indices, predictions, depth, params)
         }
     }
 

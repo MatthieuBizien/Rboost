@@ -169,7 +169,7 @@ pub(crate) fn build_bins<'a>(
 
     // If the number of indices is too small it's faster to just use the direct algorithm
     if indices.len() <= MIN_ROWS_FOR_BINNING {
-        let node = build_direct(train, indices, predictions, depth, params, cache);
+        let node = build_direct(train, indices, predictions, depth, params);
         return (Box::new(node), None);
     }
     macro_rules! return_leaf {

@@ -1,36 +1,15 @@
-use crate::{sum_indices, transmute_vec, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
+use crate::{sum_indices, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
 use ord_subset::OrdSubsetIterExt;
 //use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
-use std::mem::size_of;
 
 /// Store the result of a successful split on a node
-struct SplitResult<'a> {
-    feature_id: usize,
-    best_val: f64,
-    best_gain: f64,
-    left_indices: &'a [usize],
-    right_indices: &'a [usize],
-}
-
-struct SplitResultOwned {
+struct SplitResult {
     feature_id: usize,
     best_val: f64,
     best_gain: f64,
     left_indices: Vec<usize>,
     right_indices: Vec<usize>,
-}
-
-impl<'a> SplitResult<'a> {
-    fn to_owned(&self) -> SplitResultOwned {
-        SplitResultOwned {
-            feature_id: self.feature_id,
-            best_val: self.best_val,
-            best_gain: self.best_gain,
-            left_indices: self.left_indices.to_vec(),
-            right_indices: self.right_indices.to_vec(),
-        }
-    }
 }
 
 fn calc_gain_direct<'a>(
@@ -40,12 +19,9 @@ fn calc_gain_direct<'a>(
     sum_hessian: f64,
     params: &TreeParams,
     feature_id: usize,
-    cache: &'a mut [u8],
-) -> Option<SplitResult<'a>> {
+) -> Option<SplitResult> {
     // sorted_instance_ids = instances[:, feature_id].argsort()
-    let sorted_instance_ids = &mut cache[0..indices.len() * size_of::<usize>()];
-    let sorted_instance_ids: &mut [usize] = transmute_vec::<usize>(sorted_instance_ids);
-    sorted_instance_ids.clone_from_slice(indices);
+    let mut sorted_instance_ids = indices.to_vec();
     sorted_instance_ids.sort_unstable_by_key(|&row_id| train.features_rank[(row_id, feature_id)]);
 
     // Trivial cases: the feature is constant
@@ -104,8 +80,8 @@ fn calc_gain_direct<'a>(
         feature_id,
         best_val,
         best_gain,
-        left_indices,
-        right_indices,
+        left_indices: left_indices.to_vec(),
+        right_indices: right_indices.to_vec(),
     })
 }
 
@@ -115,29 +91,16 @@ fn get_best_split_direct<'a>(
     sum_grad: f64,
     sum_hessian: f64,
     params: &TreeParams,
-    cache: &'a mut [u8],
-) -> Option<SplitResultOwned> {
-    let cache: Vec<_> = cache
-        .chunks_mut(indices.len() * size_of::<usize>())
-        .zip(&train.columns)
-        .collect();
-    let results: Vec<SplitResult> = cache
-        .into_iter()
-        .filter_map(|(cache, &feature_id)| {
-            calc_gain_direct(
-                &train,
-                indices,
-                sum_grad,
-                sum_hessian,
-                &params,
-                feature_id,
-                cache,
-            )
+) -> Option<SplitResult> {
+    let results: Vec<_> = train
+        .columns
+        .iter()
+        .filter_map(|&feature_id| {
+            calc_gain_direct(&train, indices, sum_grad, sum_hessian, &params, feature_id)
         }).collect();
     results
         .into_iter()
         .ord_subset_max_by_key(|result| result.best_gain)
-        .map(|e| e.to_owned())
 }
 
 /// Exact Greedy Algorithm for Split Findincg
@@ -148,7 +111,6 @@ pub(crate) fn build_direct(
     predictions: &mut [f64],
     depth: usize,
     params: &TreeParams,
-    cache: &mut [u8],
 ) -> Node {
     macro_rules! return_leaf {
         () => {{
@@ -167,7 +129,7 @@ pub(crate) fn build_direct(
     let sum_grad = sum_indices(&train.grad, indices);
     let sum_hessian = sum_indices(&train.hessian, indices);
 
-    let best_result = get_best_split_direct(train, indices, sum_grad, sum_hessian, params, cache);
+    let best_result = get_best_split_direct(train, indices, sum_grad, sum_hessian, params);
 
     let best_result = match best_result {
         Some(e) => e,
@@ -184,7 +146,6 @@ pub(crate) fn build_direct(
         predictions,
         depth + 1,
         &params,
-        cache,
     ));
 
     let right_child = Box::new(build_direct(
@@ -193,7 +154,6 @@ pub(crate) fn build_direct(
         predictions,
         depth + 1,
         &params,
-        cache,
     ));
 
     Node::Split(SplitNode {
@@ -202,8 +162,4 @@ pub(crate) fn build_direct(
         split_feature_id: best_result.feature_id,
         split_val: best_result.best_val,
     })
-}
-
-pub(crate) fn get_cache_size_direct(train: &TrainDataSet) -> usize {
-    train.features.flat().len() * size_of::<usize>()
 }

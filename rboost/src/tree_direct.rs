@@ -26,7 +26,7 @@ fn calc_gain_direct(
     let sorted_instance_ids = &mut cache[0..indices.len() * size_of::<usize>()];
     let sorted_instance_ids: &mut [usize] = transmute_vec::<usize>(sorted_instance_ids);
     sorted_instance_ids.clone_from_slice(indices);
-    sorted_instance_ids.sort_unstable_by_key(|&row_id| train.sorted_features[(row_id, feature_id)]);
+    sorted_instance_ids.sort_unstable_by_key(|&row_id| train.features_rank[(row_id, feature_id)]);
 
     // Trivial cases: the feature is constant
     if sorted_instance_ids.is_empty() {

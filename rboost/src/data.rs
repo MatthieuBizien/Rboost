@@ -64,10 +64,10 @@ impl Dataset {
     }
 
     pub fn bin_features(
-        sorted_features: &ColumnMajorMatrix<usize>,
+        features_rank: &ColumnMajorMatrix<usize>,
         n_bins: usize,
     ) -> (ColumnMajorMatrix<BinType>, Vec<usize>) {
-        let x: Vec<_> = sorted_features
+        let x: Vec<_> = features_rank
             .columns()
             .map(|column| {
                 let max: usize = 1 + *column.iter().max().expect("no data in col");
@@ -109,8 +109,8 @@ impl Dataset {
     }
 
     pub fn as_prepared_data(&self, n_bins: usize) -> PreparedDataSet {
-        let sorted_features = self.sort_features();
-        let (bins, n_bins) = Dataset::bin_features(&sorted_features, n_bins);
+        let features_rank = self.sort_features();
+        let (bins, n_bins) = Dataset::bin_features(&features_rank, n_bins);
 
         let threshold_vals: Vec<_> = self
             .features
@@ -127,7 +127,7 @@ impl Dataset {
         PreparedDataSet {
             features: &self.features,
             target: &self.target,
-            sorted_features,
+            features_rank,
             bins,
             n_bins,
             threshold_vals,
@@ -138,7 +138,8 @@ impl Dataset {
 pub struct PreparedDataSet<'a> {
     pub features: &'a ColumnMajorMatrix<f64>,
     pub target: &'a Vec<f64>,
-    pub(crate) sorted_features: ColumnMajorMatrix<usize>,
+    // Rank inside the dataset of a feature. Can contains duplicates if the values are equals.
+    pub(crate) features_rank: ColumnMajorMatrix<usize>,
     pub(crate) bins: ColumnMajorMatrix<BinType>,
     pub(crate) n_bins: Vec<usize>,
     pub(crate) threshold_vals: Vec<Vec<f64>>,

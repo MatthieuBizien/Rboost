@@ -1,4 +1,8 @@
-use crate::{Loss, Node, PreparedDataSet, StridedVecView, TreeParams, DEFAULT_N_TREES};
+use crate::math::sample_indices_ratio;
+use crate::{
+    Loss, Node, PreparedDataSet, StridedVecView, TreeParams, DEFAULT_COLSAMPLE_BYTREE,
+    DEFAULT_N_TREES,
+};
 use rand::prelude::Rng;
 use rayon::prelude::*;
 use std::sync::Arc;
@@ -7,12 +11,14 @@ use std::sync::Mutex;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RFParams {
     pub n_trees: usize,
+    pub colsample_bytree: f64,
 }
 
 impl RFParams {
     pub fn new() -> Self {
         Self {
             n_trees: DEFAULT_N_TREES,
+            colsample_bytree: DEFAULT_COLSAMPLE_BYTREE,
         }
     }
 }
@@ -34,14 +40,16 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         rng: &mut impl Rng,
     ) -> (RandomForest<L>, Vec<f64>) {
         // We have to compute the weights first because they depends on &mut rng
-        let weights: Vec<Vec<f64>> = (0..rf_params.n_trees)
+        let random_init: Vec<_> = (0..rf_params.n_trees)
             .map(|_| {
                 let mut weights: Vec<_> = train.target.iter().map(|_| 0.).collect();
                 let indices: Vec<_> = (0..train.target.len()).collect();
                 for _ in train.target {
                     weights[*rng.choose(&indices).unwrap()] += 1.;
                 }
-                weights
+                let columns =
+                    sample_indices_ratio(rng, train.features.n_cols(), rf_params.colsample_bytree);
+                (weights, columns)
             }).collect();
 
         // We don't do boosting so the initial value is just the default one
@@ -51,14 +59,16 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         let predictions: Vec<_> = train.target.iter().map(|_| (0., 0)).collect();
         let predictions = Arc::new(Mutex::new(predictions));
 
-        let models: Vec<_> = weights
-            .par_iter()
-            .map(|sample_weights| {
+        let models: Vec<_> = random_init
+            .into_par_iter()
+            .map(|(sample_weights, columns)| {
                 // TODO: can we remove the allocations inside the hot loop?
 
                 // We update the data set to a train set according to the weights.
                 let mut train = train.as_train_data(&loss);
                 train.update_grad_hessian(&loss, &train_scores, &sample_weights);
+                train.columns = columns;
+
                 let mut tree_predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
                 let mut cache = Vec::new();
 

@@ -22,7 +22,9 @@ fn main() {
     let seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; // byte array
     let mut rng = SmallRng::from_seed(seed);
 
-    let rf_params = RFParams { n_trees: 100 };
+    let mut rf_params = RFParams::new();
+    rf_params.colsample_bytree = 0.9;
+    rf_params.n_trees = 100;
     let tree_params = TreeParams {
         gamma: 1.,
         lambda: 1.,

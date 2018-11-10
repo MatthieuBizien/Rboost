@@ -1,3 +1,5 @@
+use rand::seq::sample_indices;
+use rand::Rng;
 use std::mem::size_of;
 
 pub fn sum(v: &[f64]) -> f64 {
@@ -86,6 +88,16 @@ pub(crate) fn min_diff_vectors(a: &[f64], b: &[f64]) -> f64 {
         d1_ += (target + prediction).powi(2);
     }
     (d1_ - d1) / (2. * (d1 + d1_ - 2. * d0)) / 2.
+}
+
+pub(crate) fn sample_indices_ratio(rng: &mut impl Rng, length: usize, ratio: f64) -> Vec<usize> {
+    let n_cols_f64 = ratio * (length as f64);
+    let mut n_cols = n_cols_f64.floor() as usize;
+    // Randomly select N or N+1 column proportionally to the difference
+    if (n_cols_f64 - n_cols as f64) > rng.gen() {
+        n_cols += 1;
+    }
+    sample_indices(rng, length, n_cols)
 }
 
 #[cfg(test)]

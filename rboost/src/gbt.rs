@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use crate::math::sample_indices_ratio;
 use crate::{
     cosine_simularity, min_diff_vectors, Dataset, Loss, Node, PreparedDataSet, StridedVecView,
     TrainDataSet, TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
@@ -110,9 +111,18 @@ impl<L: Loss> GBT<L> {
         let mut cache = Vec::new();
         let indices: Vec<usize> = (0..train.target.len()).collect();
         let sample_weights: Vec<_> = (0..train.target.len()).map(|_| 1.).collect();
+
         for iter_cnt in 0..(num_boost_round) {
             train.update_grad_hessian(&self.loss, &train_scores, &sample_weights);
-            train.update_columns(self.booster_params.colsample_bytree, true, rng);
+
+            if self.booster_params.colsample_bytree < 1. {
+                train.columns = sample_indices_ratio(
+                    rng,
+                    train.features.n_cols(),
+                    self.booster_params.colsample_bytree,
+                );
+            }
+
             let mut learner = Node::build_from_train_data(
                 &train,
                 &indices,

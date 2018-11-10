@@ -149,8 +149,8 @@ fn get_best_split_bins(
         feature_id,
         best_val,
         best_gain,
-        left_indices: left_indices.to_vec(),
-        right_indices: right_indices.to_vec(),
+        left_indices,
+        right_indices,
     })
 }
 

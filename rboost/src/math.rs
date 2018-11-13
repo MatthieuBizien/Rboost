@@ -78,6 +78,12 @@ pub(crate) fn sample_indices_ratio(rng: &mut impl Rng, length: usize, ratio: f64
     sample_indices(rng, length, n_cols)
 }
 
+pub(crate) fn weighted_mean(val_1: f64, n_1: usize, val_2: f64, n_2: usize) -> f64 {
+    let n = (n_1 + n_2) as f64;
+    let (n_1, n_2) = (n_1 as f64, n_2 as f64);
+    (val_1 * n_1 + val_2 * n_2) / n
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;

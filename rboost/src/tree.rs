@@ -32,6 +32,7 @@ pub struct SplitNode {
     pub(crate) right_child: Box<Node>,
     pub(crate) split_feature_id: usize,
     pub(crate) split_val: f64,
+    pub(crate) val: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -84,10 +85,11 @@ impl Node {
         let depth = 0;
         let has_bins = train.n_bins.iter().any(|&n_bins| n_bins > 0);
         if has_bins {
-            let (boxed_node, _) = build_bins(train, indices, predictions, depth, params);
-            *boxed_node
+            let out = build_bins(train, indices, predictions, depth, params);
+            *(out.node)
         } else {
-            build_direct(train, indices, predictions, depth, params)
+            let out = build_direct(train, indices, predictions, depth, params);
+            *(out.node)
         }
     }
 
@@ -116,7 +118,10 @@ impl Node {
         match &self {
             Node::Split(split) => {
                 let val = features[split.split_feature_id];
-                if val <= split.split_val {
+                if val.is_nan() {
+                    // In case of a NAN we can only predict the mean value
+                    split.val
+                } else if val <= split.split_val {
                     split.left_child.predict(&features)
                 } else {
                     split.right_child.predict(&features)

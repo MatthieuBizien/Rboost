@@ -1,5 +1,5 @@
 use crate::tree_direct::build_direct;
-use crate::{sum_indices, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
+use crate::{sum_indices, weighted_mean, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
 use ord_subset::OrdSubsetIterExt;
 use std::f64::INFINITY;
 
@@ -138,6 +138,11 @@ fn get_best_split_bins(
     })
 }
 
+pub(crate) struct SplitBinReturn {
+    pub(crate) node: Box<Node>,
+    pub(crate) mean_val: f64,
+}
+
 /// Exact Greedy Algorithm for Split Finding
 ///  (Refer to Algorithm1 of Reference[1])
 pub(crate) fn build_bins<'a>(
@@ -146,19 +151,25 @@ pub(crate) fn build_bins<'a>(
     predictions: &mut [f64],
     depth: usize,
     params: &TreeParams,
-) -> (Box<Node>, Option<&'a [f64]>) {
+) -> SplitBinReturn {
     // If the number of indices is too small it's faster to just use the direct algorithm
     if indices.len() <= MIN_ROWS_FOR_BINNING {
-        let node = build_direct(train, indices, predictions, depth, params);
-        return (Box::new(node), None);
+        let out = build_direct(train, indices, predictions, depth, params);
+        return SplitBinReturn {
+            node: out.node,
+            mean_val: out.mean_val,
+        };
     }
+
     macro_rules! return_leaf {
         () => {{
-            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices);
+            let mean_val =
+                Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices);
             for &i in indices {
-                predictions[i] = val;
+                predictions[i] = mean_val;
             }
-            return (Box::new(Node::Leaf(LeafNode { val })), None);
+            let node = Box::new(Node::Leaf(LeafNode { val: mean_val }));
+            return SplitBinReturn { node, mean_val };
         }};
     }
 
@@ -169,10 +180,7 @@ pub(crate) fn build_bins<'a>(
     let sum_grad = sum_indices(&train.grad, indices);
     let sum_hessian = sum_indices(&train.hessian, indices);
 
-    let best_result;
-    {
-        best_result = get_best_split_bins(train, indices, sum_grad, sum_hessian, params);
-    }
+    let best_result = get_best_split_bins(train, indices, sum_grad, sum_hessian, params);
 
     let best_result: SplitResult = match best_result {
         Some(e) => e,
@@ -189,7 +197,7 @@ pub(crate) fn build_bins<'a>(
         predictions,
         depth + 1,
         &params,
-    ).0;
+    );
 
     let right_child = build_bins(
         &train,
@@ -197,13 +205,22 @@ pub(crate) fn build_bins<'a>(
         predictions,
         depth + 1,
         &params,
-    ).0;
+    );
+
+    let mean_val = weighted_mean(
+        right_child.mean_val,
+        best_result.right_indices.len(),
+        left_child.mean_val,
+        best_result.left_indices.len(),
+    );
 
     let node = Box::new(Node::Split(SplitNode {
-        left_child,
-        right_child,
+        left_child: left_child.node,
+        right_child: right_child.node,
         split_feature_id: best_result.feature_id,
         split_val: best_result.best_val,
+        val: mean_val,
     }));
-    (node, None)
+
+    SplitBinReturn { node, mean_val }
 }

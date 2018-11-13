@@ -1,4 +1,4 @@
-use crate::{sum_indices, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
+use crate::{sum_indices, weighted_mean, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
 use ord_subset::OrdSubsetIterExt;
 //use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
@@ -103,6 +103,11 @@ fn get_best_split_direct<'a>(
         .ord_subset_max_by_key(|result| result.best_gain)
 }
 
+pub(crate) struct DirectReturn {
+    pub(crate) node: Box<Node>,
+    pub(crate) mean_val: f64,
+}
+
 /// Exact Greedy Algorithm for Split Findincg
 ///  (Refer to Algorithm1 of Reference[1])
 pub(crate) fn build_direct(
@@ -111,14 +116,16 @@ pub(crate) fn build_direct(
     predictions: &mut [f64],
     depth: usize,
     params: &TreeParams,
-) -> Node {
+) -> DirectReturn {
     macro_rules! return_leaf {
         () => {{
-            let val = Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices);
+            let mean_val =
+                Node::_calc_leaf_weight(&train.grad, &train.hessian, params.lambda, indices);
             for &i in indices {
-                predictions[i] = val;
+                predictions[i] = mean_val;
             }
-            return Node::Leaf(LeafNode { val });
+            let node = Box::new(Node::Leaf(LeafNode { val: mean_val }));
+            return DirectReturn { node, mean_val };
         }};
     }
 
@@ -156,10 +163,20 @@ pub(crate) fn build_direct(
         &params,
     ));
 
-    Node::Split(SplitNode {
-        left_child,
-        right_child,
+    let mean_val = weighted_mean(
+        right_child.mean_val,
+        best_result.right_indices.len(),
+        left_child.mean_val,
+        best_result.left_indices.len(),
+    );
+
+    let node = Box::new(Node::Split(SplitNode {
+        left_child: left_child.node,
+        right_child: right_child.node,
         split_feature_id: best_result.feature_id,
         split_val: best_result.best_val,
-    })
+        val: mean_val,
+    }));
+
+    DirectReturn { node, mean_val }
 }

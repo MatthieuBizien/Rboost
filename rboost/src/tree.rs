@@ -27,12 +27,20 @@ impl TreeParams {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) enum NanBranch {
+    None,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SplitNode {
     pub(crate) left_child: Box<Node>,
     pub(crate) right_child: Box<Node>,
     pub(crate) split_feature_id: usize,
     pub(crate) split_val: f64,
     pub(crate) val: f64,
+    pub(crate) nan_branch: NanBranch,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -119,8 +127,12 @@ impl Node {
             Node::Split(split) => {
                 let val = features[split.split_feature_id];
                 if val.is_nan() {
-                    // In case of a NAN we can only predict the mean value
-                    split.val
+                    match split.nan_branch {
+                        NanBranch::Left => split.left_child.predict(&features),
+                        NanBranch::Right => split.right_child.predict(&features),
+                        // If we didn't see any NAN in the train branch
+                        NanBranch::None => split.val,
+                    }
                 } else if val <= split.split_val {
                     split.left_child.predict(&features)
                 } else {

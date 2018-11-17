@@ -5,6 +5,7 @@
 extern crate core;
 extern crate failure;
 extern crate ord_subset;
+extern crate ordered_float;
 extern crate rand;
 extern crate rayon;
 #[macro_use]

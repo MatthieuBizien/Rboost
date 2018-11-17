@@ -1,11 +1,12 @@
 use crate::losses::Loss;
 use crate::{prod_vec, ColumnMajorMatrix, StridedVecView};
 use failure::Error;
-use ord_subset::OrdSubsetSliceExtMut;
+use ordered_float::OrderedFloat;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::f64::INFINITY;
 use std::ops::Deref;
 
+// TODO use NonMaxX
 type BinType = u32;
 
 pub fn parse_csv(data: &str, sep: &str) -> Result<Dataset, Error> {
@@ -44,19 +45,31 @@ impl Dataset {
 
                 // First we sort the index according to the positions
                 let mut sorted_indices: Vec<usize> = (0..column.len()).collect();
-                sorted_indices.ord_subset_sort_by_key(|&row_id| column[row_id]);
+                sorted_indices.sort_by_key(|&row_id| OrderedFloat::from(column[row_id]));
 
                 // Then we create the histogram of the features
                 let mut w: Vec<usize> = (0..column.len()).map(|_| 0).collect();
-                let mut current_order = 0;
+                let nan_value = 0;
+                let mut current_order = 1;
                 let mut current_val = column[sorted_indices[0]];
-                for idx in sorted_indices.into_iter().skip(1) {
+
+                for idx in sorted_indices {
                     let val = column[idx];
-                    if val != current_val {
-                        current_order += 1;
-                        current_val = val;
+                    if val.is_nan() {
+                        w[idx] = nan_value;
+                    } else {
+                        if val != current_val {
+                            if !current_val.is_nan() {
+                                current_order += 1;
+                            }
+                            current_val = val;
+                        }
+                        w[idx] = current_order;
                     }
-                    w[idx] = current_order;
+                }
+
+                for &e in &w {
+                    assert_ne!(e, 0);
                 }
                 w
             }).collect();
@@ -66,7 +79,7 @@ impl Dataset {
     pub fn bin_features(
         features_rank: &ColumnMajorMatrix<usize>,
         n_bins: usize,
-    ) -> (ColumnMajorMatrix<BinType>, Vec<usize>) {
+    ) -> (ColumnMajorMatrix<Option<BinType>>, Vec<usize>) {
         let x: Vec<_> = features_rank
             .columns()
             .map(|column| {
@@ -74,9 +87,9 @@ impl Dataset {
                 let n_bins: usize = max.min(n_bins);
                 assert!(n_bins < (BinType::max_value()) as usize);
                 // Then we bins the features
-                let bins: Vec<BinType> = column
+                let bins: Vec<_> = column
                     .iter()
-                    .map(|&e| (e * n_bins / max) as BinType)
+                    .map(|&e| Some((e * n_bins / max) as BinType))
                     .collect();
                 (bins, n_bins)
             }).collect();
@@ -90,17 +103,21 @@ impl Dataset {
         (columns, n_bins)
     }
 
-    fn get_threshold_vals(values: &[f64], bins: &[BinType], n_bin: usize) -> Vec<f64> {
+    fn get_threshold_vals(values: &[f64], bins: &[Option<BinType>], n_bin: usize) -> Vec<f64> {
         if n_bin == 0 {
             return Vec::new();
         }
         let mut min_vals = vec![INFINITY; n_bin];
         let mut max_vals = vec![-INFINITY; n_bin];
         for (&val, &bin) in values.iter().zip(bins.iter()) {
-            let bin = bin as usize;
+            let bin = match bin {
+                None => continue,
+                Some(e) => e as usize,
+            };
             min_vals[bin] = min_vals[bin].min(val);
             max_vals[bin] = max_vals[bin].max(val);
         }
+        // TODO what happens if a bin is empty?
         max_vals
             .into_iter()
             .zip(min_vals.into_iter().skip(1))
@@ -140,7 +157,7 @@ pub struct PreparedDataSet<'a> {
     pub target: &'a Vec<f64>,
     // Rank inside the dataset of a feature. Can contains duplicates if the values are equals.
     pub(crate) features_rank: ColumnMajorMatrix<usize>,
-    pub(crate) bins: ColumnMajorMatrix<BinType>,
+    pub(crate) bins: ColumnMajorMatrix<Option<BinType>>,
     pub(crate) n_bins: Vec<usize>,
     pub(crate) threshold_vals: Vec<Vec<f64>>,
 }

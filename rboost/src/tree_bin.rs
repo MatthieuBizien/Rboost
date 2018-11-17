@@ -1,5 +1,7 @@
 use crate::tree_direct::build_direct;
-use crate::{sum_indices, weighted_mean, LeafNode, Node, SplitNode, TrainDataSet, TreeParams};
+use crate::{
+    sum_indices, weighted_mean, LeafNode, NanBranch, Node, SplitNode, TrainDataSet, TreeParams,
+};
 use ord_subset::OrdSubsetIterExt;
 use std::f64::INFINITY;
 
@@ -13,76 +15,103 @@ struct SplitResult {
     best_gain: f64,
     left_indices: Vec<usize>,
     right_indices: Vec<usize>,
-}
-
-fn update_grad_hessian(
-    train: &TrainDataSet,
-    indices: &[usize],
-    feature_id: usize,
-    grads: &mut [f64],
-    hessians: &mut [f64],
-) -> (usize, usize) {
-    assert_eq!(grads.len(), hessians.len());
-    for x in grads.iter_mut() {
-        *x = 0.;
-    }
-    for x in hessians.iter_mut() {
-        *x = 0.;
-    }
-
-    let mut min_bin = grads.len(); // placeholder value: if it don't change we have no data
-    let mut max_bin = 0;
-
-    for &i in indices {
-        let bin = train.bins[(i, feature_id)] as usize;
-        grads[bin] += train.grad[i];
-        hessians[bin] += train.hessian[i];
-        min_bin = min_bin.min(bin);
-        max_bin = max_bin.max(bin);
-    }
-    (min_bin, max_bin)
+    nan_branch: NanBranch,
 }
 
 fn calc_gain_bins(
+    train: &TrainDataSet,
+    indices: &[usize],
+    feature_id: usize,
     sum_grad: f64,
     sum_hessian: f64,
     params: &TreeParams,
-    feature_id: usize,
-    grads: &[f64],
-    hessians: &[f64],
-    min_bin: usize,
-    max_bin: usize,
-) -> Option<(usize, f64, usize)> {
+) -> Option<(usize, f64, usize, NanBranch)> {
+    let n_bins = train.n_bins[feature_id];
+
+    // First we compute the values of the bins on the dataset
+    let mut grads: Vec<_> = (0..n_bins).map(|_| 0.).collect();
+    let mut hessians: Vec<_> = (0..n_bins).map(|_| 0.).collect();
+    let mut min_bin = grads.len(); // placeholder value: if it don't change we have no data
+    let mut max_bin = 0;
+    let mut n_nan = 0;
+
+    // We iterate over all the indices. We currently don't have a fast path for sparse values.
+    for &i in indices {
+        match train.bins[(i, feature_id)] {
+            Some(bin) => {
+                let bin = bin as usize;
+                min_bin = min_bin.min(bin);
+                max_bin = max_bin.max(bin);
+                grads[bin] += train.grad[i];
+                hessians[bin] += train.hessian[i];
+            }
+            None => {
+                // NAN values are implicitly in sum_grad and sum_hessian
+                n_nan += 1;
+            }
+        };
+    }
+
     if max_bin == min_bin || max_bin == 0 {
         // Not possible to split if there is just one bin
         return None;
     }
 
-    // We initialize at the first value
-    let mut grad_left = 0.;
-    let mut hessian_left = 0.;
-    let mut best_gain = -INFINITY;
-    let mut best_bin = 0;
-    for bin in min_bin..max_bin {
-        grad_left += grads[bin];
-        hessian_left += hessians[bin];
-
-        let current_gain = Node::_calc_split_gain(
-            sum_grad,
-            sum_hessian,
-            grad_left,
-            hessian_left,
-            params.lambda,
-            params.gamma,
-        );
-
-        if current_gain > best_gain {
-            best_gain = current_gain;
-            best_bin = bin;
+    // Just a range function that can works in reverse: range(5, 0) = [5, 4, 3, 2, 1]
+    fn range(start: usize, end: usize) -> Box<Iterator<Item = usize>> {
+        if start < end {
+            Box::new(start..end)
+        } else {
+            Box::new((end..start).map(move |e| start - e))
         }
     }
 
-    return Some((feature_id, best_gain, best_bin));
+    // Compute the gain by looping over
+    let compute_gain = |start, end| {
+        // We initialize at the first value
+        let mut grad_left = 0.;
+        let mut hessian_left = 0.;
+        let mut best_gain = -INFINITY;
+        let mut best_bin = 0;
+        for bin in range(start, end) {
+            grad_left += grads[bin];
+            hessian_left += hessians[bin];
+
+            let current_gain = Node::_calc_split_gain(
+                sum_grad,
+                sum_hessian,
+                grad_left,
+                hessian_left,
+                params.lambda,
+                params.gamma,
+            );
+
+            if current_gain > best_gain {
+                best_gain = current_gain;
+                best_bin = bin;
+            }
+        }
+        (best_gain, best_bin)
+    };
+
+    // First pass: we loop over all the bins left to right.
+    let (best_gain, best_bin) = compute_gain(min_bin, max_bin);
+    if n_nan == 0 {
+        // Short path if there is no NAN
+        return Some((feature_id, best_gain, best_bin, NanBranch::None));
+    }
+
+    // If there is NAN, we try to get the best path in the reverse order, so we can choose if the
+    // default path for NAN should be in the right branch or the left branch.
+    let (best_gain_rev, best_bin_rev) = compute_gain(max_bin, min_bin);
+
+    if best_gain > best_gain_rev {
+        // For the "left to right" order, the NAN are implicitly in the left branch.
+        Some((feature_id, best_gain, best_bin, NanBranch::Right))
+    } else {
+        // It's the opposite for the "right to left" order
+        Some((feature_id, best_gain_rev, best_bin_rev, NanBranch::Left))
+    }
 }
 
 fn get_best_split_bins(
@@ -96,24 +125,10 @@ fn get_best_split_bins(
         .columns
         .iter()
         .filter_map(|&feature_id| {
-            let n_bins = train.n_bins[feature_id];
-            let mut grads: Vec<_> = (0..n_bins).map(|_| 0.).collect();
-            let mut hessians: Vec<_> = (0..n_bins).map(|_| 0.).collect();
-            let (min_bin, max_bin) =
-                update_grad_hessian(&train, &indices, feature_id, &mut grads, &mut hessians);
-            calc_gain_bins(
-                sum_grad,
-                sum_hessian,
-                &params,
-                feature_id,
-                &grads,
-                &hessians,
-                min_bin,
-                max_bin,
-            )
+            calc_gain_bins(&train, &indices, feature_id, sum_grad, sum_hessian, &params)
         }).collect();
     let best = results.into_iter().ord_subset_max_by_key(|result| result.1);
-    let (feature_id, best_gain, best_bin) = match best {
+    let (feature_id, best_gain, best_bin, nan_branch) = match best {
         None => return None,
         Some(e) => e,
     };
@@ -121,12 +136,23 @@ fn get_best_split_bins(
     let mut left_indices = Vec::new();
     let mut right_indices = Vec::new();
     for &i in indices {
-        let bin = train.bins[(i, feature_id)] as usize;
-        if bin <= best_bin {
-            left_indices.push(i);
-        } else {
-            right_indices.push(i);
-        }
+        match train.bins[(i, feature_id)] {
+            Some(bin) => {
+                let bin = bin as usize;
+                if bin <= best_bin {
+                    left_indices.push(i);
+                } else {
+                    right_indices.push(i);
+                }
+            }
+            None => {
+                match nan_branch {
+                    NanBranch::Left => left_indices.push(i),
+                    NanBranch::Right => right_indices.push(i),
+                    NanBranch::None => {} // We drop the indices if there is no preferred branch
+                }
+            }
+        };
     }
     let best_val = train.threshold_vals[feature_id][best_bin];
     Some(SplitResult {
@@ -135,6 +161,7 @@ fn get_best_split_bins(
         best_gain,
         left_indices,
         right_indices,
+        nan_branch,
     })
 }
 
@@ -220,6 +247,7 @@ pub(crate) fn build_bins<'a>(
         split_feature_id: best_result.feature_id,
         split_val: best_result.best_val,
         val: mean_val,
+        nan_branch: best_result.nan_branch,
     }));
 
     SplitBinReturn { node, mean_val }

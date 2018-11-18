@@ -1,7 +1,7 @@
 use rand::seq::sample_indices;
 use rand::Rng;
 
-pub fn sum(v: &[f64]) -> f64 {
+pub(crate) fn sum(v: &[f64]) -> f64 {
     let mut o = 0.;
     for e in v.iter() {
         o += *e;
@@ -9,11 +9,7 @@ pub fn sum(v: &[f64]) -> f64 {
     o
 }
 
-pub fn mean(v: &[f64]) -> f64 {
-    sum(&v) / (v.len() as f64)
-}
-
-pub fn prod_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
+pub(crate) fn prod_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     a.iter().zip(b).map(|(&a, &b)| a * b).collect()
 }
 

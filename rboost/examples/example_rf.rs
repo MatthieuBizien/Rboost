@@ -1,5 +1,7 @@
 #![feature(duration_as_u128)]
 
+// Example of a regression with a random forest.
+
 extern crate cpuprofiler;
 extern crate csv;
 extern crate failure;
@@ -14,14 +16,18 @@ use std::io::Write;
 use std::time::Instant;
 
 fn main() {
+    // Load the data
     let train = include_str!("../data/regression.train");
     let train = parse_csv(train, "\t").expect("Train data");
     let test = include_str!("../data/regression.test");
     let test = parse_csv(test, "\t").expect("Train data");
 
+    // Random forest is a stochastic algorithm. For better control you can set the seed before
+    // or use `let mut rng = ::rand::thread_rng()`
     let seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; // byte array
     let mut rng = SmallRng::from_seed(seed);
 
+    // We set the params for the RF and the trees
     let mut rf_params = RFParams::new();
     rf_params.colsample_bytree = 0.9;
     rf_params.n_trees = 100;
@@ -31,23 +37,31 @@ fn main() {
         max_depth: 10,
         min_split_gain: 1.,
     };
-    let n_bins = 2048;
+
+    // We use binning so the training is much faster.
+    let n_bins = 256;
+
     println!(
         "Params rf={:?} tree{:?} n_bins={}",
         rf_params, tree_params, n_bins
     );
 
+    // cpuprofiler allows us to profile the hot loop
     let profile_path = "./example_rf.profile";
     println!("Profiling to {}", profile_path);
     PROFILER.lock().unwrap().start(profile_path).unwrap();
     let predict_start_time = Instant::now();
+
     let (rf, yhat_cv) = RandomForest::build(
+        // Important: we have to transform the dataset to a PreparedDataset.
+        // This step could be done just once if you want to train multiple RF.
         &mut train.as_prepared_data(n_bins),
         &rf_params,
         &tree_params,
         RegLoss::default(),
         &mut rng,
     );
+
     println!(
         "{} RF fit. Elapsed: {:.2} secs",
         rf_params.n_trees,
@@ -55,11 +69,13 @@ fn main() {
     );
     PROFILER.lock().unwrap().stop().unwrap();
 
+    // RF gives us direct cross-validated predictions. It's usually a little bit worse than test
+    // because we use only 1-1/e = 63% of the train set.
     println!("RMSE train CV {:.8}", rmse(&train.target, &yhat_cv));
 
     let predict_start_time = Instant::now();
     let yhat_train: Vec<f64> = (0..train.features.n_rows())
-        .map(|i| rf.predict(&train.row(i)))
+        .map(|i| rf.predict(&train.features.row(i)))
         .collect();
     println!(
         "Predictions done in {:.2} secs",
@@ -68,18 +84,18 @@ fn main() {
     println!("RMSE train {:.8}", rmse(&train.target, &yhat_train));
 
     let yhat_test: Vec<f64> = (0..test.features.n_rows())
-        .map(|i| rf.predict(&test.row(i)))
+        .map(|i| rf.predict(&test.features.row(i)))
         .collect();
     println!("RMSE Test {:.8}", rmse(&test.target, &yhat_test));
 
-    println!("Serializing model to example1.json");
+    println!("Serializing model to example_rf.json");
     let serialized: String = serde_json::to_string(&rf).expect("Error on JSON serialization");
-    let mut file = File::create("example1.json").expect("Error on file creation");
+    let mut file = File::create("example_rf.json").expect("Error on file creation");
     file.write_all(serialized.as_bytes())
         .expect("Error on writing of the JSON");
 
-    println!("Writing predictions to example1.csv");
-    let file = File::create("example1.csv").expect("Error on file creation");
+    println!("Writing predictions to example_rf.csv");
+    let file = File::create("example_rf.csv").expect("Error on file creation");
     let mut wtr = csv::Writer::from_writer(file);
     wtr.write_record(&["dataset", "true_val", "yhat"])
         .expect("Error on csv writing");

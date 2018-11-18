@@ -1,6 +1,6 @@
 use crate::tree_direct::build_direct;
 use crate::{
-    sum_indices, weighted_mean, LeafNode, NanBranch, Node, SplitNode, TrainDataSet, TreeParams,
+    sum_indices, weighted_mean, LeafNode, NanBranch, Node, SplitNode, TrainDataset, TreeParams,
 };
 use ord_subset::OrdSubsetIterExt;
 use std::f64::INFINITY;
@@ -19,7 +19,7 @@ struct SplitResult {
 }
 
 fn calc_gain_bins(
-    train: &TrainDataSet,
+    train: &TrainDataset,
     indices: &[usize],
     feature_id: usize,
     sum_grad: f64,
@@ -115,7 +115,7 @@ fn calc_gain_bins(
 }
 
 fn get_best_split_bins(
-    train: &TrainDataSet,
+    train: &TrainDataset,
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
@@ -173,7 +173,7 @@ pub(crate) struct SplitBinReturn {
 /// Exact Greedy Algorithm for Split Finding
 ///  (Refer to Algorithm1 of Reference[1])
 pub(crate) fn build_bins<'a>(
-    train: &TrainDataSet,
+    train: &TrainDataset,
     indices: &[usize],
     predictions: &mut [f64],
     depth: usize,

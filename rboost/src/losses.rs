@@ -1,10 +1,12 @@
 use crate::sum;
 
+/// General interface for a loss.
 pub trait Loss: std::marker::Sync {
-    fn calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>);
+    fn calc_gradient_hessian(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>);
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64;
 }
 
+/// L2 Loss, ie the usual loss for a regression.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RegLoss {
     // Nothing inside
@@ -17,7 +19,7 @@ impl Default for RegLoss {
 }
 
 impl Loss for RegLoss {
-    fn calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
+    fn calc_gradient_hessian(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let hessian: Vec<f64> = (0..target.len()).map(|_| 2.).collect();
         let grad = (0..target.len())
             .map(|i| 2. * (target[i] - predictions[i]))
@@ -36,6 +38,8 @@ impl Loss for RegLoss {
 }
 
 /// Binary loss
+// TODO: check results
+#[doc(hidden)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BinaryLogLoss {
     // Nothing inside
@@ -48,7 +52,7 @@ impl Default for BinaryLogLoss {
 }
 
 impl Loss for BinaryLogLoss {
-    fn calc_gradient(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
+    fn calc_gradient_hessian(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let mut hessian: Vec<f64> = Vec::with_capacity(target.len());
         let mut grad = Vec::with_capacity(target.len());
         for (&target, &prediction) in target.iter().zip(predictions.iter()) {
@@ -104,7 +108,7 @@ mod tests {
 
         let loss = loss_reg.calc_loss(&target, &predictions);
 
-        let (grad, hessian) = loss_reg.calc_gradient(&target, &predictions);
+        let (grad, hessian) = loss_reg.calc_gradient_hessian(&target, &predictions);
         for i in 0..target.len() {
             // Test gradient
             // f'(x) = (f(x+eps) - f(x-eps)) / (2*eps)
@@ -133,7 +137,7 @@ mod tests {
         let expected = -2.9529210316741383;
         assert_close(loss, expected, 1e-3);
 
-        let (grad, hessian) = loss_reg.calc_gradient(&target, &predictions);
+        let (grad, hessian) = loss_reg.calc_gradient_hessian(&target, &predictions);
         for i in 0..target.len() {
             // Test gradient
             // f'(x) = (f(x+eps) - f(x-eps)) / (2*eps)

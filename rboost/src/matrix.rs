@@ -1,7 +1,6 @@
 use core::ops::Index;
 
-/// View of an item every stride on a collection of data.
-/// Starts at start, ends at the end.
+/// Slice of data with a stride.
 pub struct StridedVecView<'a, A: 'a> {
     pub data: &'a [A],
     pub start: usize,
@@ -41,12 +40,13 @@ impl<'a, A: 'a> StridedVecView<'a, A> {
     }
 }
 
+/// Store a dense matrix in a column-major way.
 pub struct ColumnMajorMatrix<A> {
-    // Number of rows in the matrix
+    /// Number of rows in the matrix
     n_rows: usize,
-    // Number of columns in the matrix
+    /// Number of columns in the matrix
     n_cols: usize,
-    // Values used by the algorithm. Format is row first
+    /// Values used by the algorithm. Format is row first
     values: Vec<A>,
 }
 
@@ -102,17 +102,18 @@ impl<A> ColumnMajorMatrix<A> {
         self.values.chunks(self.n_rows)
     }
 
-    pub fn row<'a>(&'a self, row: usize) -> StridedVecView<A> {
+    pub fn row(&self, row: usize) -> StridedVecView<A> {
         StridedVecView::new(&self.values, row, self.n_rows)
     }
 
-    pub fn flat<'a>(&'a self) -> &Vec<A> {
+    pub fn flat(&self) -> &Vec<A> {
         &self.values
     }
 
     pub fn n_rows(&self) -> usize {
         self.n_rows
     }
+
     pub fn n_cols(&self) -> usize {
         self.n_cols
     }

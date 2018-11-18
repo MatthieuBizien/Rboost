@@ -1,5 +1,6 @@
 #![feature(duration_as_u128)]
 
+/// WARNING: boosting is NOT ready, do NOT use it for real work
 extern crate cpuprofiler;
 extern crate csv;
 extern crate failure;
@@ -38,11 +39,11 @@ fn main() {
         "Params booster={:?} tree{:?} n_bins={}",
         booster_params, tree_params, n_bins
     );
-    println!("Profiling to example1.profile");
+    println!("Profiling to example_boost.profile");
     PROFILER
         .lock()
         .unwrap()
-        .start("./example1.profile")
+        .start("./example_boost.profile")
         .unwrap();
     let gbt = GBT::build(
         &booster_params,
@@ -61,7 +62,7 @@ fn main() {
     let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
     for _ in 0..n_preds {
         for (i, pred) in predictions.iter_mut().enumerate() {
-            *pred += gbt.predict(&train.row(i));
+            *pred += gbt.predict(&train.features.row(i));
         }
     }
     println!(
@@ -74,23 +75,23 @@ fn main() {
     }
 
     let yhat_train: Vec<f64> = (0..train.features.n_rows())
-        .map(|i| gbt.predict(&train.row(i)))
+        .map(|i| gbt.predict(&train.features.row(i)))
         .collect();
     println!("RMSE train {:.8}", rmse(&train.target, &yhat_train));
 
     let yhat_test: Vec<f64> = (0..test.features.n_rows())
-        .map(|i| gbt.predict(&test.row(i)))
+        .map(|i| gbt.predict(&test.features.row(i)))
         .collect();
     println!("RMSE Test {:.8}", rmse(&test.target, &yhat_test));
 
-    println!("Serializing model to example1.json");
+    println!("Serializing model to example_boost.json");
     let serialized: String = serde_json::to_string(&gbt).expect("Error on JSON serialization");
-    let mut file = File::create("example1.json").expect("Error on file creation");
+    let mut file = File::create("example_boost.json").expect("Error on file creation");
     file.write_all(serialized.as_bytes())
         .expect("Error on writing of the JSON");
 
-    println!("Writing predictions to example1.csv");
-    let file = File::create("example1.csv").expect("Error on file creation");
+    println!("Writing predictions to example_boost.csv");
+    let file = File::create("example_boost.csv").expect("Error on file creation");
     let mut wtr = csv::Writer::from_writer(file);
     wtr.write_record(&["dataset", "true_val", "yhat"])
         .expect("Error on csv writing");

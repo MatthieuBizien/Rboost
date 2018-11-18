@@ -1,5 +1,5 @@
 use crate::{
-    sum_indices, ColumnMajorMatrix, PreparedDataSet, StridedVecView, TrainDataSet, DEFAULT_GAMMA,
+    sum_indices, ColumnMajorMatrix, PreparedDataset, StridedVecView, TrainDataset, DEFAULT_GAMMA,
     DEFAULT_LAMBDA, DEFAULT_MAX_DEPTH, DEFAULT_MIN_SPLIT_GAIN,
 };
 //use rayon::prelude::ParallelIterator;
@@ -7,6 +7,9 @@ use crate::losses::Loss;
 use crate::tree_bin::build_bins;
 use crate::tree_direct::build_direct;
 
+/// Parameters for building the tree.
+///
+/// They are the same than Xgboost https://xgboost.readthedocs.io/en/latest/parameter.html
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TreeParams {
     pub gamma: f64,
@@ -34,7 +37,7 @@ pub(crate) enum NanBranch {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SplitNode {
+pub(crate) struct SplitNode {
     pub(crate) left_child: Box<Node>,
     pub(crate) right_child: Box<Node>,
     pub(crate) split_feature_id: usize,
@@ -44,12 +47,12 @@ pub struct SplitNode {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct LeafNode {
+pub(crate) struct LeafNode {
     pub(crate) val: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Node {
+pub(crate) enum Node {
     Split(SplitNode),
     Leaf(LeafNode),
 }
@@ -85,7 +88,7 @@ impl Node {
     }
 
     pub(crate) fn build_from_train_data(
-        train: &TrainDataSet,
+        train: &TrainDataset,
         indices: &[usize],
         predictions: &mut [f64],
         params: &TreeParams,
@@ -99,17 +102,6 @@ impl Node {
             let out = build_direct(train, indices, predictions, depth, params);
             *(out.node)
         }
-    }
-
-    pub fn build(
-        train: &PreparedDataSet,
-        indices: &[usize],
-        predictions: &mut [f64],
-        params: &TreeParams,
-        loss: &impl Loss,
-    ) -> Node {
-        let train = train.as_train_data(loss);
-        Self::build_from_train_data(&train, indices, predictions, params)
     }
 
     pub fn apply_shrinking(&mut self, shrinkage_rate: f64) {
@@ -153,6 +145,32 @@ impl Node {
     }
 }
 
+/// Decision Tree implementation.
+pub struct DecisionTree {
+    root: Node,
+}
+
+impl DecisionTree {
+    pub fn build(
+        train: &PreparedDataset,
+        indices: &[usize],
+        predictions: &mut [f64],
+        params: &TreeParams,
+        loss: &impl Loss,
+    ) -> Self {
+        let train = train.as_train_data(loss);
+        let node = Node::build_from_train_data(&train, indices, predictions, params);
+        DecisionTree { root: node }
+    }
+    pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {
+        self.root.predict(features)
+    }
+
+    pub fn par_predict(&self, features: &ColumnMajorMatrix<f64>) -> Vec<f64> {
+        self.root.par_predict(features)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
@@ -173,7 +191,7 @@ mod tests {
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let tree = Node::build(&train, &indices, &mut predictions, &params, &loss);
+        let tree = DecisionTree::build(&train, &indices, &mut predictions, &params, &loss);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -211,7 +229,7 @@ mod tests {
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let tree = Node::build(&train, &indices, &mut predictions, &params, &loss);
+        let tree = DecisionTree::build(&train, &indices, &mut predictions, &params, &loss);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {

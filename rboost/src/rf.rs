@@ -1,6 +1,6 @@
 use crate::math::sample_indices_ratio;
 use crate::{
-    Loss, Node, PreparedDataSet, StridedVecView, TreeParams, DEFAULT_COLSAMPLE_BYTREE,
+    Loss, Node, PreparedDataset, StridedVecView, TreeParams, DEFAULT_COLSAMPLE_BYTREE,
     DEFAULT_N_TREES,
 };
 use rand::prelude::Rng;
@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+/// Parameters for constructing a random forest.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RFParams {
     pub n_trees: usize,
@@ -23,6 +24,10 @@ impl RFParams {
     }
 }
 
+/// Random Forest implementation.
+///
+/// The trees are constructed independently by sub-sampling with resample.
+/// It's parallelized using rayon.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RandomForest<L: Loss> {
     models: Vec<Node>,
@@ -33,7 +38,7 @@ pub struct RandomForest<L: Loss> {
 
 impl<L: Loss + std::marker::Sync> RandomForest<L> {
     pub fn build(
-        train: &PreparedDataSet,
+        train: &PreparedDataset,
         rf_params: &RFParams,
         tree_params: &TreeParams,
         loss: L,

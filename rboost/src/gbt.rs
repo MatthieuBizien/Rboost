@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use crate::math::sample_indices_ratio;
 use crate::{
-    cosine_simularity, min_diff_vectors, Dataset, Loss, Node, PreparedDataSet, StridedVecView,
-    TrainDataSet, TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
+    cosine_simularity, min_diff_vectors, Dataset, Loss, Node, PreparedDataset, StridedVecView,
+    TrainDataset, TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
 };
 use rand::prelude::Rng;
 
@@ -44,7 +44,7 @@ impl<L: Loss> GBT<L> {
     pub fn build(
         booster_params: &BoosterParams,
         tree_params: &TreeParams,
-        train_set: &mut PreparedDataSet,
+        train_set: &mut PreparedDataset,
         num_boost_round: usize,
         valid_set: Option<&Dataset>,
         early_stopping_rounds: usize,
@@ -70,7 +70,7 @@ impl<L: Loss> GBT<L> {
 
     fn train(
         &mut self,
-        train: &mut TrainDataSet,
+        train: &mut TrainDataset,
         num_boost_round: usize,
         valid: Option<&Dataset>,
         early_stopping_rounds: usize,

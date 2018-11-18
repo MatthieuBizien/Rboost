@@ -1,5 +1,5 @@
 use crate::{
-    sum_indices, weighted_mean, LeafNode, NanBranch, Node, SplitNode, TrainDataSet, TreeParams,
+    sum_indices, weighted_mean, LeafNode, NanBranch, Node, SplitNode, TrainDataset, TreeParams,
 };
 use ord_subset::OrdSubsetIterExt;
 //use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -16,7 +16,7 @@ struct SplitResult {
 }
 
 fn calc_gain_direct<'a>(
-    train: &TrainDataSet,
+    train: &TrainDataset,
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
@@ -138,7 +138,7 @@ fn calc_gain_direct<'a>(
 }
 
 fn get_best_split_direct<'a>(
-    train: &TrainDataSet,
+    train: &TrainDataset,
     indices: &[usize],
     sum_grad: f64,
     sum_hessian: f64,
@@ -163,7 +163,7 @@ pub(crate) struct DirectReturn {
 /// Exact Greedy Algorithm for Split Findincg
 ///  (Refer to Algorithm1 of Reference[1])
 pub(crate) fn build_direct(
-    train: &TrainDataSet,
+    train: &TrainDataset,
     indices: &[usize],
     predictions: &mut [f64],
     depth: usize,

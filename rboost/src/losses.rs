@@ -4,6 +4,8 @@ use crate::sum;
 pub trait Loss: std::marker::Sync {
     fn calc_gradient_hessian(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>);
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64;
+    /// Transform from latent variables (eg. odd for logistic regression) to the target (eg. proba)
+    fn get_target(&self, latent: f64) -> f64;
 }
 
 /// L2 Loss, ie the usual loss for a regression.
@@ -35,18 +37,16 @@ impl Loss for RegLoss {
         }
         return sum(&errors);
     }
+
+    fn get_target(&self, latent: f64) -> f64 {
+        latent
+    }
 }
 
 /// Binary log loss, for two-class classification
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BinaryLogLoss {
     // Nothing inside
-}
-
-impl BinaryLogLoss {
-    pub fn transform(latent: f64) -> f64 {
-        1. / (1. + (latent).exp())
-    }
 }
 
 impl Default for BinaryLogLoss {
@@ -60,7 +60,7 @@ impl Loss for BinaryLogLoss {
         let mut hessian: Vec<f64> = Vec::with_capacity(target.len());
         let mut grad = Vec::with_capacity(target.len());
         for (&target, &latent) in target.iter().zip(predictions.iter()) {
-            let proba = Self::transform(-latent);
+            let proba = self.get_target(-latent);
             grad.push(proba - target);
             hessian.push(proba * (1. - proba));
         }
@@ -80,12 +80,16 @@ impl Loss for BinaryLogLoss {
                 "Target must be 0 or 1, got {}",
                 target
             );
-            let proba = Self::transform(-latent);
+            let proba = self.get_target(-latent);
             let loss = target * proba.max(1e-8).ln() + (1. - target) * (1. - proba).max(1e-8).ln();
             assert!(!loss.is_nan());
             errors.push(-loss);
         }
         return sum(&errors);
+    }
+
+    fn get_target(&self, latent: f64) -> f64 {
+        1. / (1. + latent.exp())
     }
 }
 

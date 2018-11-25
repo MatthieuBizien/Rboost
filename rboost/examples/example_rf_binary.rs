@@ -88,7 +88,7 @@ fn main() {
     PROFILER.lock().unwrap().start(profile_path).unwrap();
     let predict_start_time = Instant::now();
 
-    let (rf, mut yhat_cv) = RandomForest::build(
+    let (rf, yhat_cv) = RandomForest::build(
         // Important: we have to transform the dataset to a PreparedDataset.
         // This step could be done just once if you want to train multiple RF.
         &mut train.as_prepared_data(n_bins),
@@ -107,9 +107,6 @@ fn main() {
 
     // RF gives us direct cross-validated predictions. It's usually a little bit worse than test
     // because we use only 1-1/e = 63% of the train set.
-    for e in yhat_cv.iter_mut() {
-        *e = BinaryLogLoss::transform(*e);
-    }
     println!(
         "TRAIN CV: ROC AUC {:.8}, accuracy {:.8}",
         roc_auc_score(&train.target, &yhat_cv),
@@ -119,7 +116,6 @@ fn main() {
     let predict_start_time = Instant::now();
     let yhat_train: Vec<f64> = (0..train.features.n_rows())
         .map(|i| rf.predict(&train.features.row(i)))
-        .map(|latent| BinaryLogLoss::transform(latent))
         .collect();
     println!(
         "Predictions done in {:.2} secs",
@@ -133,7 +129,6 @@ fn main() {
 
     let yhat_test: Vec<f64> = (0..test.features.n_rows())
         .map(|i| rf.predict(&test.features.row(i)))
-        .map(|latent| BinaryLogLoss::transform(latent))
         .collect();
     println!(
         "TEST:  ROC AUC {:.8}, accuracy {:.8}",

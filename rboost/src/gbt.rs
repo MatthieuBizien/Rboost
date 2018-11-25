@@ -192,7 +192,7 @@ impl<L: Loss> GBT<L> {
         if o.is_nan() {
             panic!("NAN in output of prediction");
         }
-        o
+        self.loss.get_target(o)
     }
 
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {

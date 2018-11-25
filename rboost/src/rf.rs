@@ -109,6 +109,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         let predictions = predictions
             .iter()
             .map(|(pred, n)| *pred / (*n as f64))
+            .map(|latent| loss.get_target(latent))
             .collect();
 
         let rf = RandomForest {
@@ -130,6 +131,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         if o.is_nan() {
             panic!("NAN in output of prediction");
         }
-        o / self.models.len() as f64
+        let o = o / self.models.len() as f64;
+        self.loss.get_target(o)
     }
 }

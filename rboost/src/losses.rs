@@ -37,12 +37,16 @@ impl Loss for RegLoss {
     }
 }
 
-/// Binary loss
-// TODO: check results
-#[doc(hidden)]
+/// Binary log loss, for two-class classification
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BinaryLogLoss {
     // Nothing inside
+}
+
+impl BinaryLogLoss {
+    pub fn transform(latent: f64) -> f64 {
+        1. / (1. + (latent).exp())
+    }
 }
 
 impl Default for BinaryLogLoss {
@@ -55,24 +59,31 @@ impl Loss for BinaryLogLoss {
     fn calc_gradient_hessian(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let mut hessian: Vec<f64> = Vec::with_capacity(target.len());
         let mut grad = Vec::with_capacity(target.len());
-        for (&target, &prediction) in target.iter().zip(predictions.iter()) {
-            let odd = 1. / (1. + prediction.exp());
-            grad.push(target + odd - 1.);
-            hessian.push(odd.powi(2) - odd);
+        for (&target, &latent) in target.iter().zip(predictions.iter()) {
+            let proba = Self::transform(-latent);
+            grad.push(proba - target);
+            hessian.push(proba * (1. - proba));
         }
         (grad, hessian)
     }
 
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
+        // target Y = 0 or 1
         // proba p = 1 / (1 + exp(-x))
-        // Loss = P * log(p) + (1-P) * log(1-p)
-        //      = -P*log(1+exp(-x)) + (1-P) * log(exp(-x)) - (1-P) *  log(1+exp(-x))
-        //      = - log(1+exp(-x)) + (1-P) * -x
+        // -Loss = Y * log(p) + (1-Y) * log(1-p)
+        //       = -Y * log(1+exp(-x)) + (1-Y) * log(exp(-x)) - (1-Y) *  log(1+exp(-x))
+        //       = - log(1+exp(-x)) + (1-Y) * -x
         let mut errors = Vec::new();
-        for (&target, &x) in target.iter().zip(predictions.iter()) {
-            let proba = 1. / (1. + (-x).exp());
+        for (&target, &latent) in target.iter().zip(predictions.iter()) {
+            assert!(
+                (target == 0.) | (target == 1.),
+                "Target must be 0 or 1, got {}",
+                target
+            );
+            let proba = Self::transform(-latent);
             let loss = target * proba.max(1e-8).ln() + (1. - target) * (1. - proba).max(1e-8).ln();
-            errors.push(loss);
+            assert!(!loss.is_nan());
+            errors.push(-loss);
         }
         return sum(&errors);
     }
@@ -88,15 +99,18 @@ mod tests {
         v
     }
 
-    fn assert_close(a: f64, b: f64, delta: f64) {
-        assert!(
-            (a - b).abs() <= delta,
-            "Difference = {:.6} > {:.6} too important between {:.6} and {:.6}",
-            a - b,
-            delta,
-            a,
-            b
-        );
+    macro_rules! assert_close {
+        ($a : expr, $b: expr, $delta: expr) => {{
+            let (a, b, delta) = ($a, $b, $delta);
+            assert!(
+                (a - b).abs() <= delta,
+                "Difference = {:.6} > {:.6} too important between {:.6} and {:.6}",
+                a - b,
+                delta,
+                a,
+                b
+            );
+        }};
     }
 
     #[test]
@@ -115,13 +129,13 @@ mod tests {
             let l_plus = loss_reg.calc_loss(&inc_vec(&target, i, eps), &predictions);
             let l_minus = loss_reg.calc_loss(&inc_vec(&target, i, -eps), &predictions);
             let grad_emp = (l_plus - l_minus) / (2. * eps);
-            assert_close(grad[i], grad_emp, 1e-5);
+            assert_close!(grad[i], grad_emp, 1e-5);
 
             // Test hessian
             // f"(x) = (f'(x+eps/2) - f'(x-eps/2)) / (2*eps/2)
             //       = (f(x+eps)-f(x) - f(x) + f(x-eps)) / (eps*eps)
             let hessian_emp = (l_plus + l_minus - 2. * loss) / eps.powi(2);
-            assert_close(hessian[i], hessian_emp, 1e-5);
+            assert_close!(hessian[i], hessian_emp, 1e-5);
         }
     }
 
@@ -134,8 +148,8 @@ mod tests {
         let loss_reg = BinaryLogLoss::default();
 
         let loss = loss_reg.calc_loss(&target, &predictions);
-        let expected = -2.9529210316741383;
-        assert_close(loss, expected, 1e-3);
+        let expected = 2.9529210316741383;
+        assert_close!(loss, expected, 1e-3);
 
         let (grad, hessian) = loss_reg.calc_gradient_hessian(&target, &predictions);
         for i in 0..target.len() {
@@ -144,13 +158,13 @@ mod tests {
             let l_plus = loss_reg.calc_loss(&target, &inc_vec(&predictions, i, eps));
             let l_minus = loss_reg.calc_loss(&target, &inc_vec(&predictions, i, -eps));
             let grad_emp = (l_plus - l_minus) / (2. * eps);
-            assert_close(grad[i], grad_emp, 1e-5);
+            assert_close!(grad[i], grad_emp, 1e-5);
 
             // Test hessian
             // f"(x) = (f'(x+eps/2) - f'(x-eps/2)) / (2*eps/2)
             //       = (f(x+eps)-f(x) - f(x) + f(x-eps)) / (eps*eps)
             let hessian_emp = (l_plus + l_minus - 2. * loss) / eps.powi(2);
-            assert_close(hessian[i], hessian_emp, 1e-5);
+            assert_close!(hessian[i], hessian_emp, 1e-5);
         }
     }
 }

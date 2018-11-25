@@ -23,7 +23,7 @@ mod tree_bin;
 mod tree_direct;
 
 pub use crate::data::*;
-#[doc(hidden)]  // TODO implements boosting correctly
+#[doc(hidden)] // TODO implements boosting correctly
 pub use crate::gbt::*;
 pub use crate::losses::*;
 pub use crate::math::*;

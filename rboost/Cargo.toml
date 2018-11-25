@@ -17,9 +17,10 @@ serde_derive = "1.0"
 
 [dev-dependencies]
 cpuprofiler = "0.0.3"
+criterion = "0.2"
+rustlearn = "0.5.0"
 serde_json = "1.0"
 csv = "1"
-criterion = "0.2"
 
 [[bench]]
 name = "bench_trees"

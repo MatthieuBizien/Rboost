@@ -18,10 +18,15 @@ serde_derive = "1.0"
 [dev-dependencies]
 cpuprofiler = "0.0.3"
 criterion = "0.2"
+lazy_static = "1.2.0"
 rustlearn = "0.5.0"
 serde_json = "1.0"
 csv = "1"
 
 [[bench]]
 name = "bench_trees"
+harness = false
+
+[[bench]]
+name = "bench_binary"
 harness = false

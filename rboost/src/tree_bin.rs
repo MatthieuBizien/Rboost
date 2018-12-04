@@ -173,7 +173,7 @@ pub(crate) struct SplitBinReturn {
 
 /// Exact Greedy Algorithm for Split Finding
 ///  (Refer to Algorithm1 of Reference[1])
-pub(crate) fn build_bins<'a>(
+pub(crate) fn build_bins(
     train: &TrainDataset,
     indices: &[usize],
     predictions: &mut [f64],

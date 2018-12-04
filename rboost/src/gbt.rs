@@ -31,6 +31,12 @@ impl BoosterParams {
     }
 }
 
+impl Default for BoosterParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GBT<L: Loss> {
     models: Vec<Node>,
@@ -167,7 +173,7 @@ impl<L: Loss> GBT<L> {
                             best_iteration,
                             best_val_loss
                                 .map(|e| format!("{:.10}", e))
-                                .unwrap_or("-".to_string())
+                                .unwrap_or_else(|| "-".to_string())
                         );
                         for _ in best_iteration..(iter_cnt - 1) {
                             self.models.pop();

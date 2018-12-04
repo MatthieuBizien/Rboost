@@ -35,7 +35,7 @@ impl Loss for RegLoss {
             let diff = target - predictions[n_row];
             errors.push(diff.powi(2));
         }
-        return sum(&errors);
+        sum(&errors)
     }
 
     fn get_target(&self, latent: f64) -> f64 {
@@ -67,6 +67,9 @@ impl Loss for BinaryLogLoss {
         (grad, hessian)
     }
 
+    // Targets must be 0 or 1 exactly - for the moment. This loss function could generalize to
+    // y in [0,1]
+    #[allow(clippy::float_cmp)]
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
         // target y = 0 or 1
         // proba p = 1 / (1 + exp(-x))
@@ -81,7 +84,7 @@ impl Loss for BinaryLogLoss {
             let loss = (1. - y) * x + (-x).exp().ln_1p();
             errors.push(loss);
         }
-        return sum(&errors);
+        sum(&errors)
     }
 
     fn get_target(&self, latent: f64) -> f64 {

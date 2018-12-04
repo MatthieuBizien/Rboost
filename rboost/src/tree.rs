@@ -29,6 +29,12 @@ impl TreeParams {
     }
 }
 
+impl Default for TreeParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) enum NanBranch {
     None,
@@ -84,7 +90,7 @@ impl Node {
         lambda: f64,
         indices: &[usize],
     ) -> f64 {
-        return sum_indices(grad, indices) / (sum_indices(hessian, indices) + lambda);
+        sum_indices(grad, indices) / (sum_indices(hessian, indices) + lambda)
     }
 
     pub(crate) fn build_from_train_data(
@@ -137,7 +143,6 @@ impl Node {
 
     pub fn par_predict(&self, features: &ColumnMajorMatrix<f64>) -> Vec<f64> {
         (0..features.n_rows())
-            .into_iter()
             .map(|i| {
                 let row = features.row(i);
                 self.predict(&row)

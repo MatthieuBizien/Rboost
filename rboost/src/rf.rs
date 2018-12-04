@@ -24,6 +24,12 @@ impl RFParams {
     }
 }
 
+impl Default for RFParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Random Forest implementation.
 ///
 /// The trees are constructed independently by sub-sampling with resample.
@@ -110,7 +116,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         let predictions = predictions.lock().expect("Poisoned mutex");
         let predictions = predictions
             .iter()
-            .map(|(pred, n)| *pred / (*n as f64))
+            .map(|(pred, n)| *pred / f64::from(*n))
             .map(|latent| loss.get_target(latent))
             .collect();
 

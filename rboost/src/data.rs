@@ -15,11 +15,11 @@ type BinType = u32;
 pub fn parse_csv(data: &str, sep: &str) -> Result<Dataset, Error> {
     let mut target: Vec<f64> = Vec::new();
     let mut features: Vec<Vec<f64>> = Vec::new();
-    for l in data.split("\n") {
-        if l.len() == 0 {
+    for l in data.split('\n') {
+        if l.is_empty() {
             continue;
         }
-        let mut items = l.split(sep).into_iter();
+        let mut items = l.split(sep);
         target.push(items.next().expect("first item").parse()?);
         features.push(items.map(|e| e.parse().unwrap()).collect());
     }
@@ -40,6 +40,9 @@ impl Dataset {
     /// Rank per columns: the smallest value will have the rank 1,
     /// two equals values will have the same rank.
     /// NAN values will have the rank 0.
+    ///
+    // Because we use strict float ranking, we have to use exact float comparison.
+    #[allow(clippy::float_cmp)]
     fn rank_features(&self) -> ColumnMajorMatrix<usize> {
         let columns = self
             .features

@@ -15,7 +15,9 @@ struct SplitResult {
     nan_branch: NanBranch,
 }
 
-fn calc_gain_direct<'a>(
+// Because we use strict float ranking, we have to use exact float comparison.
+#[allow(clippy::float_cmp)]
+fn calc_gain_direct(
     train: &TrainDataset,
     indices: &[usize],
     sum_grad: f64,
@@ -137,7 +139,7 @@ fn calc_gain_direct<'a>(
     })
 }
 
-fn get_best_split_direct<'a>(
+fn get_best_split_direct(
     train: &TrainDataset,
     indices: &[usize],
     sum_grad: f64,

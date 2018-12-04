@@ -126,7 +126,8 @@ fn get_best_split_bins(
         .iter()
         .filter_map(|&feature_id| {
             calc_gain_bins(&train, &indices, feature_id, sum_grad, sum_hessian, &params)
-        }).collect();
+        })
+        .collect();
     let best = results.into_iter().ord_subset_max_by_key(|result| result.1);
     let (feature_id, best_gain, best_bin, nan_branch) = match best {
         None => return None,

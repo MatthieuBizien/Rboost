@@ -149,7 +149,8 @@ fn get_best_split_direct<'a>(
         .iter()
         .filter_map(|&feature_id| {
             calc_gain_direct(&train, indices, sum_grad, sum_hessian, &params, feature_id)
-        }).collect();
+        })
+        .collect();
     results
         .into_iter()
         .ord_subset_max_by_key(|result| result.best_gain)

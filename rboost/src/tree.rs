@@ -141,7 +141,8 @@ impl Node {
             .map(|i| {
                 let row = features.row(i);
                 self.predict(&row)
-            }).collect()
+            })
+            .collect()
     }
 }
 

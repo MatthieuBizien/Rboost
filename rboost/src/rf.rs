@@ -55,7 +55,8 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
                 let columns =
                     sample_indices_ratio(rng, train.features.n_cols(), rf_params.colsample_bytree);
                 (weights, columns)
-            }).collect();
+            })
+            .collect();
 
         // We don't do boosting so the initial value is just the default one
         let train_scores: Vec<_> = train.target.iter().map(|_| 0.).collect();
@@ -102,7 +103,8 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
                     predictions[i].1 += 1;
                 }
                 node
-            }).collect();
+            })
+            .collect();
 
         // We divide the cross-validated predictions by the number of trees used
         let predictions = predictions.lock().expect("Poisoned mutex");

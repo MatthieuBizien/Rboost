@@ -9,8 +9,8 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use rand::prelude::{SeedableRng, SmallRng};
-use rboost::{GBT, TreeParams, BoosterParams, parse_csv, BinaryLogLoss, Booster};
-use rustlearn::prelude::{Array};
+use rboost::{parse_csv, BinaryLogLoss, Booster, BoosterParams, TreeParams, GBT};
+use rustlearn::prelude::Array;
 
 fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
     for &y in y_true {

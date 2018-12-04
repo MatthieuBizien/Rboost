@@ -60,7 +60,8 @@ impl RBoostRegressor {
                     .iter()
                     .map(|e| (*e).clone())
                     .collect()
-            }).collect();
+            })
+            .collect();
         Ok(y.scalar_sum() + x.scalar_sum())
     }
 }
@@ -78,7 +79,8 @@ fn rboost_python(_py: Python, m: &PyModule) -> PyResult<()> {
                     .iter()
                     .map(|e| (*e).clone())
                     .collect()
-            }).collect();
+            })
+            .collect();
         Ok(y.scalar_sum() + x.scalar_sum())
     }
 

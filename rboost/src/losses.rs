@@ -68,22 +68,18 @@ impl Loss for BinaryLogLoss {
     }
 
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64 {
-        // target Y = 0 or 1
+        // target y = 0 or 1
         // proba p = 1 / (1 + exp(-x))
-        // -Loss = Y * log(p) + (1-Y) * log(1-p)
-        //       = -Y * log(1+exp(-x)) + (1-Y) * log(exp(-x)) - (1-Y) *  log(1+exp(-x))
-        //       = - log(1+exp(-x)) + (1-Y) * -x
+        // -Loss = - y * log(p) - (1-y) * log(1-p)
+        //       = y * log(1+exp(-x)) - (1-y) * log(exp(-x)) + (1-y) *  log(1+exp(-x))
+        //       = log(1+exp(-x)) + (1-y) * x
+        // See https://play.rust-lang.org/?edition=2015&gist=1b59228c7a9ceea83a769b644927f192
+        // for benchmarks (including Taylor series)
         let mut errors = Vec::new();
-        for (&target, &latent) in target.iter().zip(predictions.iter()) {
-            assert!(
-                (target == 0.) | (target == 1.),
-                "Target must be 0 or 1, got {}",
-                target
-            );
-            let proba = self.get_target(-latent);
-            let loss = target * proba.max(1e-8).ln() + (1. - target) * (1. - proba).max(1e-8).ln();
-            assert!(!loss.is_nan());
-            errors.push(-loss);
+        for (&y, &x) in target.iter().zip(predictions.iter()) {
+            assert!((y == 0.) | (y == 1.), "Target must be 0 or 1, got {}", y);
+            let loss = (1. - y) * x + (-x).exp().ln_1p();
+            errors.push(loss);
         }
         return sum(&errors);
     }

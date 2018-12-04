@@ -76,7 +76,8 @@ impl Dataset {
                     assert_ne!(e, 0);
                 }
                 w
-            }).collect();
+            })
+            .collect();
         ColumnMajorMatrix::from_columns(columns)
     }
 
@@ -99,7 +100,8 @@ impl Dataset {
                     .map(|&e| Some((e * n_bins / max) as BinType))
                     .collect();
                 (bins, n_bins)
-            }).collect();
+            })
+            .collect();
         let mut columns = Vec::with_capacity(x.len());
         let mut n_bins = Vec::with_capacity(x.len());
         for (col, n_bin) in x.into_iter() {
@@ -176,6 +178,15 @@ pub struct PreparedDataset<'a> {
     pub(crate) bins: ColumnMajorMatrix<Option<BinType>>,
     pub(crate) n_bins: Vec<usize>,
     pub(crate) threshold_vals: Vec<Vec<f64>>,
+}
+
+impl<'a> PreparedDataset<'a> {
+    pub fn target(&'a self) -> &'a ColumnMajorMatrix<f64> {
+        self.features
+    }
+    pub fn features(&'a self) -> &'a ColumnMajorMatrix<f64> {
+        self.features
+    }
 }
 
 impl<'a> PreparedDataset<'a> {

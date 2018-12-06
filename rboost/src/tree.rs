@@ -152,28 +152,34 @@ impl Node {
 }
 
 /// Decision Tree implementation.
-pub struct DecisionTree {
+pub struct DecisionTree<L: Loss> {
     root: Node,
+    loss: L,
 }
 
-impl DecisionTree {
+impl<L: Loss> DecisionTree<L> {
     pub fn build(
         train: &PreparedDataset,
-        indices: &[usize],
         predictions: &mut [f64],
         params: &TreeParams,
-        loss: &impl Loss,
+        loss: L,
     ) -> Self {
-        let train = train.as_train_data(loss);
-        let node = Node::build_from_train_data(&train, indices, predictions, params);
-        DecisionTree { root: node }
+        let mut indices: Vec<_> = (0..train.target.len()).collect();
+        let train = train.as_train_data(&loss);
+        let node = Node::build_from_train_data(&train, &mut indices, predictions, params);
+        DecisionTree { root: node, loss }
     }
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {
-        self.root.predict(features)
+        let o = self.root.predict(features);
+        self.loss.get_target(o)
     }
 
     pub fn par_predict(&self, features: &ColumnMajorMatrix<f64>) -> Vec<f64> {
-        self.root.par_predict(features)
+        self.root
+            .par_predict(features)
+            .iter()
+            .map(|&o| self.loss.get_target(o))
+            .collect()
     }
 }
 
@@ -192,12 +198,10 @@ mod tests {
         let train = train.as_prepared_data(3_000);
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
-        let indices: Vec<_> = (0..train.target.len()).collect();
-
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let tree = DecisionTree::build(&train, &indices, &mut predictions, &params, &loss);
+        let tree = DecisionTree::build(&train, &mut predictions, &params, loss);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -230,12 +234,10 @@ mod tests {
         let train = train.as_prepared_data(0);
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
-        let indices: Vec<_> = (0..train.target.len()).collect();
-
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let tree = DecisionTree::build(&train, &indices, &mut predictions, &params, &loss);
+        let tree = DecisionTree::build(&train, &mut predictions, &params, loss);
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {

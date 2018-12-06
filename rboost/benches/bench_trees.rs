@@ -16,7 +16,6 @@ fn bench_tree(b: &mut Bencher, n_bins: &&usize) {
     let train = include_str!("../data/regression.train");
     let train = parse_csv(train, "\t").expect("Train data");
     let train = train.as_prepared_data(**n_bins);
-    let indices: Vec<_> = (0..train.features().n_rows()).collect();
     let loss = RegLoss::default();
 
     b.iter(|| {
@@ -28,7 +27,7 @@ fn bench_tree(b: &mut Bencher, n_bins: &&usize) {
         };
 
         let mut predictions: Vec<_> = (0..train.features().n_rows()).map(|_| 0.).collect();
-        DecisionTree::build(&train, &indices, &mut predictions, &tree_params, &loss);
+        DecisionTree::build(&train, &mut predictions, &tree_params, &loss);
     })
 }
 

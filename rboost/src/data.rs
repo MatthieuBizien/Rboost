@@ -1,8 +1,8 @@
 use crate::losses::Loss;
 use crate::{prod_vec, ColumnMajorMatrix};
-use failure::Error;
 use ordered_float::OrderedFloat;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use std::error::Error;
 use std::f64::INFINITY;
 use std::ops::Deref;
 
@@ -12,7 +12,7 @@ type BinType = u32;
 /// Util for parsing a CSV without headers into a dataset.
 ///
 /// The first column of the CSV must be the target.
-pub fn parse_csv(data: &str, sep: &str) -> Result<Dataset, Error> {
+pub fn parse_csv(data: &str, sep: &str) -> Result<Dataset, Box<Error>> {
     let mut target: Vec<f64> = Vec::new();
     let mut features: Vec<Vec<f64>> = Vec::new();
     for l in data.split('\n') {
@@ -20,8 +20,9 @@ pub fn parse_csv(data: &str, sep: &str) -> Result<Dataset, Error> {
             continue;
         }
         let mut items = l.split(sep);
-        target.push(items.next().expect("first item").parse()?);
-        features.push(items.map(|e| e.parse().unwrap()).collect());
+        target.push(items.next().ok_or("no_target")?.parse()?);
+        let c_features: Result<_, Box<Error>> = items.map(|item| Ok(item.parse()?)).collect();
+        features.push(c_features?);
     }
     let features = ColumnMajorMatrix::from_rows(features);
 

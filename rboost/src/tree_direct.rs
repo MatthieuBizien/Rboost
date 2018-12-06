@@ -202,21 +202,21 @@ pub(crate) fn build_direct(
         return_leaf!();
     }
 
-    let left_child = Box::new(build_direct(
+    let left_child = build_direct(
         &train,
         &best_result.left_indices,
         predictions,
         depth + 1,
         &params,
-    ));
+    );
 
-    let right_child = Box::new(build_direct(
+    let right_child = build_direct(
         &train,
         &best_result.right_indices,
         predictions,
         depth + 1,
         &params,
-    ));
+    );
 
     let mean_val = weighted_mean(
         right_child.mean_val,

@@ -93,9 +93,32 @@ impl<A> ColumnMajorMatrix<A> {
         }
     }
 
+    pub fn from_function(
+        n_rows: usize,
+        n_cols: usize,
+        f: impl Fn(usize, usize) -> A,
+    ) -> ColumnMajorMatrix<A> {
+        let mut values = Vec::new();
+        for col in 0..n_cols {
+            for row in 0..n_rows {
+                values.push(f(row, col));
+            }
+        }
+        ColumnMajorMatrix {
+            n_rows,
+            n_cols,
+            values,
+        }
+    }
+
     pub fn column(&self, col: usize) -> &[A] {
         let start = col * self.n_rows;
         &self.values.as_slice()[start..start + self.n_rows]
+    }
+
+    pub fn column_mut(&mut self, col: usize) -> &mut [A] {
+        let start = col * self.n_rows;
+        &mut self.values.as_mut_slice()[start..start + self.n_rows]
     }
 
     pub fn columns(&self) -> impl Iterator<Item = &[A]> {

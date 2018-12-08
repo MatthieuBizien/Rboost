@@ -2,53 +2,47 @@ use std::time::Instant;
 
 use crate::math::sample_indices_ratio;
 use crate::{
-    cosine_simularity, min_diff_vectors, ColumnMajorMatrix, Dataset, Loss, Node, PreparedDataset,
-    StridedVecView, TrainDataset, TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
+    ColumnMajorMatrix, Dataset, Loss, Node, PreparedDataset, StridedVecView, TrainDataset,
+    TreeParams, DEFAULT_COLSAMPLE_BYTREE,
 };
 use rand::prelude::Rng;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Booster {
-    Geometric,
-    CosineSimilarity,
-    MinDiffVectors,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BoosterParams {
-    pub learning_rate: f64,
-    pub booster: Booster,
+pub struct DartParams {
     pub colsample_bytree: f64,
+    pub dropout_rate: f64,
 }
 
-impl BoosterParams {
+impl DartParams {
     pub fn new() -> Self {
-        BoosterParams {
-            learning_rate: DEFAULT_LEARNING_RATE,
-            booster: Booster::Geometric,
+        DartParams {
             colsample_bytree: DEFAULT_COLSAMPLE_BYTREE,
+            dropout_rate: 0.5,
         }
     }
 }
 
-impl Default for BoosterParams {
+impl Default for DartParams {
     fn default() -> Self {
         Self::new()
     }
 }
 
+/// Dart Booster. Boosting with dropout.
+///
+/// Based on https://arxiv.org/abs/1505.01866
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GBT<L: Loss> {
+pub struct Dart<L: Loss> {
     models: Vec<Node>,
-    booster_params: BoosterParams,
+    booster_params: DartParams,
     tree_params: TreeParams,
     best_iteration: usize,
     loss: L,
 }
 
-impl<L: Loss> GBT<L> {
+impl<L: Loss> Dart<L> {
     pub fn build(
-        booster_params: &BoosterParams,
+        booster_params: &DartParams,
         tree_params: &TreeParams,
         train_set: &mut PreparedDataset,
         num_boost_round: usize,
@@ -56,8 +50,8 @@ impl<L: Loss> GBT<L> {
         early_stopping_rounds: usize,
         loss: L,
         rng: &mut impl Rng,
-    ) -> GBT<L> {
-        let mut o = GBT {
+    ) -> Dart<L> {
+        let mut o = Dart {
             models: Vec::new(),
             booster_params: (*booster_params).clone(),
             tree_params: (*tree_params).clone(),
@@ -94,7 +88,6 @@ impl<L: Loss> GBT<L> {
             }
         }
 
-        let mut shrinkage_rate = 1.;
         let mut best_iteration = 0;
         let mut best_val_loss = None;
         let train_start_time = Instant::now();
@@ -125,14 +118,21 @@ impl<L: Loss> GBT<L> {
         let sample_weights: Vec<_> = vec![1.; size_train];
         let mut train_scores = vec![0.; size_train];
         let mut val_scores = size_val.map(|size_val| vec![0.; size_val]);
+        let mut active_tree = vec![true; num_boost_round];
 
         fn calc_full_prediction(
             predictions: &ColumnMajorMatrix<f64>,
             tree_weights: &[f64],
+            filter: &[bool],
             dest: &mut [f64],
         ) {
             dest.iter_mut().for_each(|e| *e = 0.);
-            for (predictions, &weight) in predictions.columns().zip(tree_weights) {
+            for ((predictions, &weight), &keep) in
+                predictions.columns().zip(tree_weights).zip(filter)
+            {
+                if !keep {
+                    continue;
+                }
                 for (dest, prediction) in dest.iter_mut().zip(predictions) {
                     *dest += prediction * weight;
                 }
@@ -140,7 +140,27 @@ impl<L: Loss> GBT<L> {
         }
 
         for iter_cnt in 0..(num_boost_round) {
-            calc_full_prediction(&train_preds, &tree_weights, &mut train_scores);
+            // Skip some trees for predictions
+            for e in active_tree.iter_mut().take(iter_cnt) {
+                if rng.gen::<f64>() > self.booster_params.dropout_rate {
+                    *e = false;
+                } else {
+                    *e = true
+                }
+            }
+            if active_tree.iter().all(|&e| e) & (self.booster_params.dropout_rate != 1.0) {
+                *rng.choose_mut(&mut active_tree).unwrap() = true;
+            }
+            let n_removed: usize = active_tree.iter().map(|&e| (!e) as usize).sum();
+            //println!("{} n_removed {}",iter_cnt, n_removed);
+            let normalizer = (n_removed as f64) / (1. + n_removed as f64);
+            for (&e, weight) in active_tree.iter().zip(tree_weights.iter_mut()) {
+                if !e {
+                    *weight *= normalizer;
+                }
+            }
+
+            calc_full_prediction(&train_preds, &tree_weights, &active_tree, &mut train_scores);
             train.update_grad_hessian(&self.loss, &train_scores, &sample_weights);
 
             if self.booster_params.colsample_bytree < 1. {
@@ -158,16 +178,7 @@ impl<L: Loss> GBT<L> {
                 &self.tree_params,
             );
 
-            tree_weights.push(match self.booster_params.booster {
-                Booster::CosineSimilarity => {
-                    shrinkage_rate * cosine_simularity(&train.grad, &train_preds.column(iter_cnt))
-                }
-                Booster::Geometric => shrinkage_rate,
-                Booster::MinDiffVectors => {
-                    shrinkage_rate * min_diff_vectors(&train.grad, &train_preds.column(iter_cnt))
-                }
-            });
-            shrinkage_rate *= self.booster_params.learning_rate;
+            tree_weights.push(1. / (1. + n_removed as f64));
 
             if let Some(valid) = valid {
                 let val_predictions = val_predictions.as_mut().expect("No val score");
@@ -178,7 +189,13 @@ impl<L: Loss> GBT<L> {
                 for i in 0..dest.len() {
                     dest[i] = preds[i]
                 }
-                calc_full_prediction(&val_predictions, &tree_weights, &mut val_scores);
+                active_tree.iter_mut().for_each(|e| *e = true);
+                calc_full_prediction(
+                    &val_predictions,
+                    &tree_weights,
+                    &active_tree,
+                    &mut val_scores,
+                );
                 let val_loss =
                     self.loss.calc_loss(&valid.target, &val_scores) / (valid.target.len() as f64);
                 let val_loss = val_loss.sqrt();

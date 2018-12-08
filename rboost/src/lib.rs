@@ -11,6 +11,7 @@ extern crate rayon;
 #[macro_use]
 extern crate serde_derive;
 
+mod dart;
 mod data;
 #[allow(dead_code)]
 mod gbt;
@@ -22,6 +23,7 @@ mod tree;
 mod tree_bin;
 mod tree_direct;
 
+pub use crate::dart::*;
 pub use crate::data::*;
 #[doc(hidden)] // TODO implements boosting correctly
 pub use crate::gbt::*;

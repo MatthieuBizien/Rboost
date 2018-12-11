@@ -15,10 +15,10 @@ use rboost::{parse_csv, DecisionTree, RegLoss, TreeParams};
 fn bench_tree(b: &mut Bencher, n_bins: &&usize) {
     let train = include_str!("../data/regression.train");
     let train = parse_csv(train, "\t").expect("Train data");
-    let train = train.as_prepared_data(**n_bins);
-    let loss = RegLoss::default();
+    let train = train.as_prepared_data(**n_bins).expect("Preparing data");
 
     b.iter(|| {
+        let loss = RegLoss::default();
         let tree_params = TreeParams {
             gamma: 1.,
             lambda: 10.,
@@ -27,7 +27,8 @@ fn bench_tree(b: &mut Bencher, n_bins: &&usize) {
         };
 
         let mut predictions: Vec<_> = (0..train.features().n_rows()).map(|_| 0.).collect();
-        DecisionTree::build(&train, &mut predictions, &tree_params, &loss);
+        let tree = DecisionTree::build(&train, &mut predictions, &tree_params, loss);
+        tree.expect("Error while creating tree");
     })
 }
 

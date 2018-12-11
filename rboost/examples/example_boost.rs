@@ -14,11 +14,11 @@ use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
 
-fn main() {
+fn main() -> Result<(), Box<::std::error::Error>> {
     let train = include_str!("../data/regression.train");
-    let train = parse_csv(train, "\t").expect("Train data");
+    let train = parse_csv(train, "\t")?;
     let test = include_str!("../data/regression.test");
-    let test = parse_csv(test, "\t").expect("Train data");
+    let test = parse_csv(test, "\t")?;
 
     let seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; // byte array
     let mut rng = SmallRng::from_seed(seed);
@@ -40,22 +40,18 @@ fn main() {
         booster_params, tree_params, n_bins
     );
     println!("Profiling to example_boost.profile");
-    PROFILER
-        .lock()
-        .unwrap()
-        .start("./example_boost.profile")
-        .unwrap();
+    PROFILER.lock()?.start("./example_boost.profile")?;
     let gbt = GBT::build(
         &booster_params,
         &tree_params,
-        &mut train.as_prepared_data(n_bins),
+        &mut train.as_prepared_data(n_bins)?,
         1000,
         Some(&test),
         1000,
         RegLoss::default(),
         &mut rng,
-    );
-    PROFILER.lock().unwrap().stop().unwrap();
+    )?;
+    PROFILER.lock()?.stop()?;
 
     let n_preds = 10;
     let predict_start_time = Instant::now();
@@ -85,23 +81,20 @@ fn main() {
     println!("RMSE Test {:.8}", rmse(&test.target, &yhat_test));
 
     println!("Serializing model to example_boost.json");
-    let serialized: String = serde_json::to_string(&gbt).expect("Error on JSON serialization");
-    let mut file = File::create("example_boost.json").expect("Error on file creation");
-    file.write_all(serialized.as_bytes())
-        .expect("Error on writing of the JSON");
+    let serialized: String = serde_json::to_string(&gbt)?;
+    let mut file = File::create("example_boost.json")?;
+    file.write_all(serialized.as_bytes())?;
 
     println!("Writing predictions to example_boost.csv");
-    let file = File::create("example_boost.csv").expect("Error on file creation");
+    let file = File::create("example_boost.csv")?;
     let mut wtr = csv::Writer::from_writer(file);
-    wtr.write_record(&["dataset", "true_val", "yhat"])
-        .expect("Error on csv writing");
+    wtr.write_record(&["dataset", "true_val", "yhat"])?;
     for (true_val, yhat) in train.target.iter().zip(yhat_train.iter()) {
-        wtr.write_record(&["train", &true_val.to_string(), &yhat.to_string()])
-            .expect("Error on csv writing");
+        wtr.write_record(&["train", &true_val.to_string(), &yhat.to_string()])?;
     }
     for (true_val, yhat) in test.target.iter().zip(yhat_test.iter()) {
-        wtr.write_record(&["test", &true_val.to_string(), &yhat.to_string()])
-            .expect("Error on csv writing");
+        wtr.write_record(&["test", &true_val.to_string(), &yhat.to_string()])?;
     }
-    wtr.flush().expect("Error on CSV flushing");
+    wtr.flush()?;
+    Ok(())
 }

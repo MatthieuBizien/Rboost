@@ -13,7 +13,7 @@ extern crate serde_derive;
 
 mod dart;
 mod data;
-#[allow(dead_code)]
+mod error;
 mod gbt;
 mod losses;
 mod math;
@@ -25,6 +25,7 @@ mod tree_direct;
 
 pub use crate::dart::*;
 pub use crate::data::*;
+pub use crate::error::*;
 #[doc(hidden)] // TODO implements boosting correctly
 pub use crate::gbt::*;
 pub use crate::losses::*;

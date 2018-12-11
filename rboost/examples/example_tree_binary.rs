@@ -10,7 +10,7 @@ extern crate serde_json;
 use rboost::{parse_csv, BinaryLogLoss, DecisionTree, TreeParams};
 use rustlearn::prelude::Array;
 
-fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
+fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> Result<f32, Box<::std::error::Error>> {
     for &y in y_true {
         assert!((y == 0.) | (y == 1.), "Target must be 0 or 1, got {}", y)
     }
@@ -25,7 +25,7 @@ fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
     let y_true: Array = Array::from(y_true);
     let y_hat: Vec<_> = y_hat.iter().map(|e| *e as f32).collect();
     let y_hat: Array = Array::from(y_hat);
-    ::rustlearn::metrics::roc_auc_score(&y_true, &y_hat).expect("Error on ROC AUC")
+    Ok(::rustlearn::metrics::roc_auc_score(&y_true, &y_hat)?)
 }
 
 fn accuracy_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
@@ -45,11 +45,11 @@ fn accuracy_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
     (n_ok as f32) / (y_true.len() as f32)
 }
 
-fn main() {
+fn main() -> Result<(), Box<::std::error::Error>> {
     let train = include_str!("../data/binary.train");
-    let train = parse_csv(train, "\t").expect("Train data");
+    let train = parse_csv(train, "\t")?;
     let test = include_str!("../data/binary.test");
-    let test = parse_csv(test, "\t").expect("Train data");
+    let test = parse_csv(test, "\t")?;
 
     let n_bins = 2048;
 
@@ -64,18 +64,18 @@ fn main() {
 
         let mut predictions = vec![0.; train.target.len()];
         let tree = DecisionTree::build(
-            &mut train.as_prepared_data(n_bins),
+            &mut train.as_prepared_data(n_bins)?,
             &mut predictions,
             &tree_params,
             BinaryLogLoss::default(),
-        );
+        )?;
 
         let yhat_train: Vec<f64> = (0..train.features.n_rows())
             .map(|i| tree.predict(&train.features.row(i)))
             .collect();
         println!(
             "TRAIN: ROC AUC {:.8}, accuracy {:.8}",
-            roc_auc_score(&train.target, &yhat_train),
+            roc_auc_score(&train.target, &yhat_train)?,
             accuracy_score(&train.target, &yhat_train),
         );
 
@@ -84,8 +84,10 @@ fn main() {
             .collect();
         println!(
             "TEST:  ROC AUC {:.8}, accuracy {:.8}",
-            roc_auc_score(&test.target, &yhat_test),
+            roc_auc_score(&test.target, &yhat_test)?,
             accuracy_score(&test.target, &yhat_test),
         );
     }
+
+    Ok(())
 }

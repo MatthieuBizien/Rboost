@@ -1,5 +1,6 @@
 use crate::{
     sum_indices, weighted_mean, LeafNode, NanBranch, Node, SplitNode, TrainDataset, TreeParams,
+    SHOULD_NOT_HAPPEN,
 };
 use ord_subset::OrdSubsetIterExt;
 //use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -50,7 +51,10 @@ fn calc_gain_direct(
     // Because the rank of the NAN is always smaller than the rank of the other values, at n_nan
     // we have the smallest not-nan value
     let first_rank = train.features_rank[(sorted_instance_ids[n_nan], feature_id)];
-    let last_rank = train.features_rank[(*sorted_instance_ids.last().unwrap(), feature_id)];
+    let last_rank = train.features_rank[(
+        *sorted_instance_ids.last().expect(SHOULD_NOT_HAPPEN),
+        feature_id,
+    )];
     if first_rank == last_rank {
         return None;
     }

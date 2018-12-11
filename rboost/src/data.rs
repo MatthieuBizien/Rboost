@@ -1,5 +1,5 @@
 use crate::losses::Loss;
-use crate::{prod_vec, ColumnMajorMatrix};
+use crate::{prod_vec, ColumnMajorMatrix, FitResult};
 use ordered_float::OrderedFloat;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::error::Error;
@@ -91,11 +91,11 @@ impl Dataset {
     fn bin_features(
         features_rank: &ColumnMajorMatrix<usize>,
         n_bins: usize,
-    ) -> (ColumnMajorMatrix<Option<BinType>>, Vec<usize>) {
-        let x: Vec<_> = features_rank
+    ) -> FitResult<(ColumnMajorMatrix<Option<BinType>>, Vec<usize>)> {
+        let x: FitResult<Vec<_>> = features_rank
             .columns()
             .map(|column| {
-                let max: usize = 1 + *column.iter().max().expect("no data in col");
+                let max: usize = 1 + *column.iter().max().ok_or("No data")?;
                 let n_bins: usize = max.min(n_bins);
                 assert!(n_bins < (BinType::max_value()) as usize);
                 // Then we bins the features
@@ -103,9 +103,10 @@ impl Dataset {
                     .iter()
                     .map(|&e| Some((e * n_bins / max) as BinType))
                     .collect();
-                (bins, n_bins)
+                Ok((bins, n_bins))
             })
             .collect();
+        let x = x?;
         let mut columns = Vec::with_capacity(x.len());
         let mut n_bins = Vec::with_capacity(x.len());
         for (col, n_bin) in x.into_iter() {
@@ -113,7 +114,7 @@ impl Dataset {
             n_bins.push(n_bin);
         }
         let columns = ColumnMajorMatrix::from_columns(columns);
-        (columns, n_bins)
+        Ok((columns, n_bins))
     }
 
     /// Pre-compute the thresholds when we split between two bins.
@@ -146,9 +147,9 @@ impl Dataset {
     /// Prepare the dataset for the training.
     /// * `n_bins` - Number of bins we want to use. Set it to 0 for exact training
     ///     Exact training is slower and more prone to over-fit.
-    pub fn as_prepared_data(&self, n_bins: usize) -> PreparedDataset {
+    pub fn as_prepared_data(&self, n_bins: usize) -> FitResult<PreparedDataset> {
         let features_rank = self.rank_features();
-        let (bins, n_bins) = Dataset::bin_features(&features_rank, n_bins);
+        let (bins, n_bins) = Dataset::bin_features(&features_rank, n_bins)?;
 
         let threshold_vals: Vec<_> = self
             .features
@@ -162,14 +163,14 @@ impl Dataset {
             .map(|((values, bins), &n_bin)| Self::get_threshold_between_bins(values, bins, n_bin))
             .collect();
 
-        PreparedDataset {
+        Ok(PreparedDataset {
             features: &self.features,
             target: &self.target,
             features_rank,
             bins,
             n_bins,
             threshold_vals,
-        }
+        })
     }
 }
 
@@ -206,6 +207,21 @@ impl<'a> PreparedDataset<'a> {
         };
         train.update_grad_hessian(loss, &zero_vec, &weights);
         train
+    }
+
+    /// Check we have no NAN in input
+    pub(crate) fn check_data(&self) -> FitResult<()> {
+        for &x in self.features.flat() {
+            if x.is_nan() {
+                Err("Found NAN in the features")?;
+            }
+        }
+        for &x in self.target {
+            if x.is_nan() {
+                Err("Found NAN in the target")?;
+            }
+        }
+        Ok(())
     }
 }
 

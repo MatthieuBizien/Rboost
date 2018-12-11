@@ -12,7 +12,7 @@ use rand::prelude::{SeedableRng, SmallRng};
 use rboost::{parse_csv, BinaryLogLoss, Booster, BoosterParams, TreeParams, GBT};
 use rustlearn::prelude::Array;
 
-fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
+fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> Result<f32, Box<::std::error::Error>> {
     for &y in y_true {
         assert!((y == 0.) | (y == 1.), "Target must be 0 or 1, got {}", y)
     }
@@ -27,7 +27,7 @@ fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
     let y_true: Array = Array::from(y_true);
     let y_hat: Vec<_> = y_hat.iter().map(|e| *e as f32).collect();
     let y_hat: Array = Array::from(y_hat);
-    ::rustlearn::metrics::roc_auc_score(&y_true, &y_hat).expect("Error on ROC AUC")
+    Ok(::rustlearn::metrics::roc_auc_score(&y_true, &y_hat)?)
 }
 
 fn accuracy_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
@@ -47,11 +47,11 @@ fn accuracy_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
     (n_ok as f32) / (y_true.len() as f32)
 }
 
-fn main() {
+fn main() -> Result<(), Box<::std::error::Error>> {
     let train = include_str!("../data/binary.train");
-    let train = parse_csv(train, "\t").expect("Train data");
+    let train = parse_csv(train, "\t")?;
     let test = include_str!("../data/binary.test");
-    let test = parse_csv(test, "\t").expect("Train data");
+    let test = parse_csv(test, "\t")?;
 
     let seed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; // byte array
     let mut rng = SmallRng::from_seed(seed);
@@ -73,29 +73,25 @@ fn main() {
         booster_params, tree_params, n_bins
     );
     println!("Profiling to example_boost_binary.profile");
-    PROFILER
-        .lock()
-        .unwrap()
-        .start("./example_boost_binary.profile")
-        .unwrap();
+    PROFILER.lock()?.start("./example_boost_binary.profile")?;
     let gbt = GBT::build(
         &booster_params,
         &tree_params,
-        &mut train.as_prepared_data(n_bins),
+        &mut train.as_prepared_data(n_bins)?,
         100,
         Some(&test),
         10000,
         BinaryLogLoss::default(),
         &mut rng,
-    );
-    PROFILER.lock().unwrap().stop().unwrap();
+    )?;
+    PROFILER.lock()?.stop()?;
 
     let yhat_train: Vec<f64> = (0..train.features.n_rows())
         .map(|i| gbt.predict(&train.features.row(i)))
         .collect();
     println!(
         "TRAIN: ROC AUC {:.8}, accuracy {:.8}",
-        roc_auc_score(&train.target, &yhat_train),
+        roc_auc_score(&train.target, &yhat_train)?,
         accuracy_score(&train.target, &yhat_train),
     );
 
@@ -104,7 +100,8 @@ fn main() {
         .collect();
     println!(
         "TEST:  ROC AUC {:.8}, accuracy {:.8}",
-        roc_auc_score(&test.target, &yhat_test),
+        roc_auc_score(&test.target, &yhat_test)?,
         accuracy_score(&test.target, &yhat_test),
     );
+    Ok(())
 }

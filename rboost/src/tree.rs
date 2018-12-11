@@ -1,6 +1,6 @@
 use crate::{
-    sum_indices, ColumnMajorMatrix, PreparedDataset, StridedVecView, TrainDataset, DEFAULT_GAMMA,
-    DEFAULT_LAMBDA, DEFAULT_MAX_DEPTH, DEFAULT_MIN_SPLIT_GAIN,
+    sum_indices, ColumnMajorMatrix, FitResult, PreparedDataset, StridedVecView, TrainDataset,
+    DEFAULT_GAMMA, DEFAULT_LAMBDA, DEFAULT_MAX_DEPTH, DEFAULT_MIN_SPLIT_GAIN,
 };
 //use rayon::prelude::ParallelIterator;
 use crate::losses::Loss;
@@ -163,11 +163,11 @@ impl<L: Loss> DecisionTree<L> {
         predictions: &mut [f64],
         params: &TreeParams,
         loss: L,
-    ) -> Self {
+    ) -> FitResult<Self> {
         let mut indices: Vec<_> = (0..train.target.len()).collect();
         let train = train.as_train_data(&loss);
         let node = Node::build_from_train_data(&train, &mut indices, predictions, params);
-        DecisionTree { root: node, loss }
+        Ok(DecisionTree { root: node, loss })
     }
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {
         let o = self.root.predict(features);
@@ -188,20 +188,20 @@ mod tests {
     use crate::*;
 
     #[test]
-    fn test_regression_bins() {
+    fn test_regression_bins() -> Result<(), Box<::std::error::Error>> {
         let train = include_str!("../data/regression.train");
-        let train = parse_csv(train, "\t").expect("Train data");
+        let train = parse_csv(train, "\t")?;
         let test = include_str!("../data/regression.test");
-        let test = parse_csv(test, "\t").expect("Train data");
+        let test = parse_csv(test, "\t")?;
 
         let loss = RegLoss::default();
-        let train = train.as_prepared_data(3_000);
+        let train = train.as_prepared_data(3_000)?;
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let tree = DecisionTree::build(&train, &mut predictions, &params, loss);
+        let tree = DecisionTree::build(&train, &mut predictions, &params, loss)?;
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -221,23 +221,24 @@ mod tests {
             "Test loss too important, expected 0.44403195, got {}",
             loss_test
         );
+        Ok(())
     }
 
     #[test]
-    fn test_regression_direct() {
+    fn test_regression_direct() -> Result<(), Box<::std::error::Error>> {
         let train = include_str!("../data/regression.train");
-        let train = parse_csv(train, "\t").expect("Train data");
+        let train = parse_csv(train, "\t")?;
         let test = include_str!("../data/regression.test");
-        let test = parse_csv(test, "\t").expect("Train data");
+        let test = parse_csv(test, "\t")?;
 
         let loss = RegLoss::default();
-        let train = train.as_prepared_data(0);
+        let train = train.as_prepared_data(0)?;
 
         let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
-        let tree = DecisionTree::build(&train, &mut predictions, &params, loss);
+        let tree = DecisionTree::build(&train, &mut predictions, &params, loss)?;
         let pred2 = tree.par_predict(&train.features);
         assert_eq!(predictions.len(), pred2.len());
         for i in 0..predictions.len() {
@@ -257,5 +258,6 @@ mod tests {
             "Test loss too important, expected 0.44403195, got {}",
             loss_test
         );
+        Ok(())
     }
 }

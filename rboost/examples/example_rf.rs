@@ -15,12 +15,12 @@ use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
 
-fn main() {
+fn main() -> Result<(), Box<::std::error::Error>> {
     // Load the data
     let train = include_str!("../data/regression.train");
-    let train = parse_csv(train, "\t").expect("Train data");
+    let train = parse_csv(train, "\t")?;
     let test = include_str!("../data/regression.test");
-    let test = parse_csv(test, "\t").expect("Train data");
+    let test = parse_csv(test, "\t")?;
 
     // Random forest is a stochastic algorithm. For better control you can set the seed before
     // or use `let mut rng = ::rand::thread_rng()`
@@ -49,25 +49,25 @@ fn main() {
     // cpuprofiler allows us to profile the hot loop
     let profile_path = "./example_rf.profile";
     println!("Profiling to {}", profile_path);
-    PROFILER.lock().unwrap().start(profile_path).unwrap();
+    PROFILER.lock()?.start(profile_path)?;
     let predict_start_time = Instant::now();
 
     let (rf, yhat_cv) = RandomForest::build(
         // Important: we have to transform the dataset to a PreparedDataset.
         // This step could be done just once if you want to train multiple RF.
-        &mut train.as_prepared_data(n_bins),
+        &mut train.as_prepared_data(n_bins)?,
         &rf_params,
         &tree_params,
         RegLoss::default(),
         &mut rng,
-    );
+    )?;
 
     println!(
         "{} RF fit. Elapsed: {:.2} secs",
         rf_params.n_trees,
         predict_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
     );
-    PROFILER.lock().unwrap().stop().unwrap();
+    PROFILER.lock()?.stop()?;
 
     // RF gives us direct cross-validated predictions. It's usually a little bit worse than test
     // because we use only 1-1/e = 63% of the train set.
@@ -89,23 +89,20 @@ fn main() {
     println!("RMSE Test {:.8}", rmse(&test.target, &yhat_test));
 
     println!("Serializing model to example_rf.json");
-    let serialized: String = serde_json::to_string(&rf).expect("Error on JSON serialization");
-    let mut file = File::create("example_rf.json").expect("Error on file creation");
-    file.write_all(serialized.as_bytes())
-        .expect("Error on writing of the JSON");
+    let serialized: String = serde_json::to_string(&rf)?;
+    let mut file = File::create("example_rf.json")?;
+    file.write_all(serialized.as_bytes())?;
 
     println!("Writing predictions to example_rf.csv");
-    let file = File::create("example_rf.csv").expect("Error on file creation");
+    let file = File::create("example_rf.csv")?;
     let mut wtr = csv::Writer::from_writer(file);
-    wtr.write_record(&["dataset", "true_val", "yhat"])
-        .expect("Error on csv writing");
+    wtr.write_record(&["dataset", "true_val", "yhat"])?;
     for (true_val, yhat) in train.target.iter().zip(yhat_train.iter()) {
-        wtr.write_record(&["train", &true_val.to_string(), &yhat.to_string()])
-            .expect("Error on csv writing");
+        wtr.write_record(&["train", &true_val.to_string(), &yhat.to_string()])?;
     }
     for (true_val, yhat) in test.target.iter().zip(yhat_test.iter()) {
-        wtr.write_record(&["test", &true_val.to_string(), &yhat.to_string()])
-            .expect("Error on csv writing");
+        wtr.write_record(&["test", &true_val.to_string(), &yhat.to_string()])?;
     }
-    wtr.flush().expect("Error on CSV flushing");
+    wtr.flush()?;
+    Ok(())
 }

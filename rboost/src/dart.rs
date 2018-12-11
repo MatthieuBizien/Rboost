@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use crate::math::sample_indices_ratio;
 use crate::{
-    ColumnMajorMatrix, Dataset, Loss, Node, PreparedDataset, StridedVecView, TrainDataset,
-    TreeParams, DEFAULT_COLSAMPLE_BYTREE,
+    ColumnMajorMatrix, Dataset, FitResult, Loss, Node, PreparedDataset, StridedVecView,
+    TrainDataset, TreeParams, DEFAULT_COLSAMPLE_BYTREE, SHOULD_NOT_HAPPEN,
 };
 use rand::prelude::Rng;
 
@@ -50,7 +50,7 @@ impl<L: Loss> Dart<L> {
         early_stopping_rounds: usize,
         loss: L,
         rng: &mut impl Rng,
-    ) -> Dart<L> {
+    ) -> FitResult<Dart<L>> {
         let mut o = Dart {
             models: Vec::new(),
             booster_params: (*booster_params).clone(),
@@ -64,8 +64,8 @@ impl<L: Loss> Dart<L> {
             valid_set,
             early_stopping_rounds,
             rng,
-        );
-        o
+        )?;
+        Ok(o)
     }
 
     fn train(
@@ -75,18 +75,8 @@ impl<L: Loss> Dart<L> {
         valid: Option<&Dataset>,
         early_stopping_rounds: usize,
         rng: &mut impl Rng,
-    ) {
-        // Check we have no NAN in input
-        for &x in train.features.flat() {
-            if x.is_nan() {
-                panic!("Found NAN in the features")
-            }
-        }
-        for &x in train.target {
-            if x.is_nan() {
-                panic!("Found NAN in the features")
-            }
-        }
+    ) -> FitResult<()> {
+        train.check_data()?;
 
         let mut best_iteration = 0;
         let mut best_val_loss = None;
@@ -149,10 +139,9 @@ impl<L: Loss> Dart<L> {
                 }
             }
             if active_tree.iter().all(|&e| e) & (self.booster_params.dropout_rate != 1.0) {
-                *rng.choose_mut(&mut active_tree).unwrap() = true;
+                *rng.choose_mut(&mut active_tree).expect(SHOULD_NOT_HAPPEN) = true;
             }
             let n_removed: usize = active_tree.iter().map(|&e| (!e) as usize).sum();
-            //println!("{} n_removed {}",iter_cnt, n_removed);
             let normalizer = (n_removed as f64) / (1. + n_removed as f64);
             for (&e, weight) in active_tree.iter().zip(tree_weights.iter_mut()) {
                 if !e {
@@ -181,8 +170,8 @@ impl<L: Loss> Dart<L> {
             tree_weights.push(1. / (1. + n_removed as f64));
 
             if let Some(valid) = valid {
-                let val_predictions = val_predictions.as_mut().expect("No val score");
-                let mut val_scores = val_scores.as_mut().unwrap();
+                let val_predictions = val_predictions.as_mut().expect(SHOULD_NOT_HAPPEN);
+                let mut val_scores = val_scores.as_mut().expect(SHOULD_NOT_HAPPEN);
                 let dest = val_predictions.column_mut(iter_cnt);
                 let preds = learner.par_predict(&valid.features);
                 assert_eq!(dest.len(), preds.len());
@@ -214,7 +203,7 @@ impl<L: Loss> Dart<L> {
                             best_iteration,
                             best_val_loss
                                 .map(|e| format!("{:.10}", e))
-                                .unwrap_or_else(|| "-".to_string())
+                                .expect(SHOULD_NOT_HAPPEN)
                         );
                         for _ in best_iteration..(iter_cnt - 1) {
                             self.models.pop();
@@ -235,6 +224,7 @@ impl<L: Loss> Dart<L> {
             self.models.len(),
             train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
         );
+        Ok(())
     }
 
     fn _predict(&self, features: &StridedVecView<f64>, models: &[Node]) -> f64 {

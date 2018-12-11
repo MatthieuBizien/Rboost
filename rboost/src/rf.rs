@@ -1,7 +1,7 @@
 use crate::math::sample_indices_ratio;
 use crate::{
-    Loss, Node, PreparedDataset, StridedVecView, TreeParams, DEFAULT_COLSAMPLE_BYTREE,
-    DEFAULT_N_TREES,
+    FitResult, Loss, Node, PreparedDataset, StridedVecView, TreeParams, DEFAULT_COLSAMPLE_BYTREE,
+    DEFAULT_N_TREES, SHOULD_NOT_HAPPEN,
 };
 use rand::prelude::Rng;
 use rayon::prelude::*;
@@ -49,14 +49,16 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         tree_params: &TreeParams,
         loss: L,
         rng: &mut impl Rng,
-    ) -> (RandomForest<L>, Vec<f64>) {
+    ) -> FitResult<(RandomForest<L>, Vec<f64>)> {
+        train.check_data()?;
+
         // We have to compute the weights first because they depends on &mut rng
         let random_init: Vec<_> = (0..rf_params.n_trees)
             .map(|_| {
                 let mut weights: Vec<_> = train.target.iter().map(|_| 0.).collect();
                 let indices: Vec<_> = (0..train.target.len()).collect();
                 for _ in train.target {
-                    weights[*rng.choose(&indices).unwrap()] += 1.;
+                    weights[*rng.choose(&indices).expect(SHOULD_NOT_HAPPEN)] += 1.;
                 }
                 let columns =
                     sample_indices_ratio(rng, train.features.n_cols(), rf_params.colsample_bytree);
@@ -127,7 +129,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
             loss,
         };
 
-        (rf, predictions)
+        Ok((rf, predictions))
     }
 
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {

@@ -1,7 +1,6 @@
 #![feature(duration_as_u128)]
 
 extern crate csv;
-extern crate failure;
 extern crate rboost;
 extern crate serde_json;
 

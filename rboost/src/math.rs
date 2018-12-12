@@ -80,6 +80,40 @@ pub(crate) fn weighted_mean(val_1: f64, n_1: usize, val_2: f64, n_2: usize) -> f
     (val_1 * n_1 + val_2 * n_2) / n
 }
 
+pub fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> Result<f64, Box<::std::error::Error>> {
+    if y_hat.len() != y_true.len() {
+        Err("Size of inputs are not the same for ROC AUC")?;
+    }
+    if y_hat.len() == 0 {
+        Err("No input for ROC AUC")?;
+    }
+    let mut v: Vec<_> = y_true
+        .iter()
+        .zip(y_hat)
+        .map(|(&y_true, &y_hat)| (y_true > 0.5, y_hat))
+        .collect();
+    let auc = classifier_measures::roc_auc_mut(&mut v).ok_or("Error on computation of ROC AUC");
+    Ok(auc?)
+}
+
+pub fn accuracy_score(y_true: &[f64], y_hat: &[f64]) -> Result<f64, Box<::std::error::Error>> {
+    let mut n_ok = 0;
+    for (&a, &b) in y_true.iter().zip(y_hat) {
+        let a = if a == 0. {
+            false
+        } else if a == 1. {
+            true
+        } else {
+            Err("Label must be 0 or 1")?;
+            unreachable!()
+        };
+        if a == (b > 0.5) {
+            n_ok += 1;
+        }
+    }
+    Ok((n_ok as f64) / (y_true.len() as f64))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;

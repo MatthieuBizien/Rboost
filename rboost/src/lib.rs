@@ -1,9 +1,4 @@
-#![feature(duration_as_u128)]
-#![feature(plugin, custom_attribute)]
-#![feature(inner_deref)]
-
 extern crate core;
-extern crate failure;
 extern crate ord_subset;
 extern crate ordered_float;
 extern crate rand;

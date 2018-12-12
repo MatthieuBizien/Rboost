@@ -3,7 +3,6 @@
 /// WARNING: boosting is NOT ready, do NOT use it for real work
 extern crate cpuprofiler;
 extern crate csv;
-extern crate failure;
 extern crate rboost;
 extern crate serde_json;
 
@@ -39,8 +38,10 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         "Params booster={:?} tree{:?} n_bins={}",
         booster_params, tree_params, n_bins
     );
+
     println!("Profiling to example_boost.profile");
     PROFILER.lock()?.start("./example_boost.profile")?;
+    let train_start_time = Instant::now();
     let gbt = GBT::build(
         &booster_params,
         &tree_params,
@@ -51,11 +52,16 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         RegLoss::default(),
         &mut rng,
     )?;
+    println!(
+        "Training of {} trees finished. Elapsed: {:.2} secs",
+        gbt.n_trees(),
+        train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+    );
     PROFILER.lock()?.stop()?;
 
     let n_preds = 10;
     let predict_start_time = Instant::now();
-    let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
+    let mut predictions = vec![0.; train.n_rows()];
     for _ in 0..n_preds {
         for (i, pred) in predictions.iter_mut().enumerate() {
             *pred += gbt.predict(&train.features.row(i));

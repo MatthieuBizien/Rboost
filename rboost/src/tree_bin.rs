@@ -18,6 +18,17 @@ struct SplitResult {
     nan_branch: NanBranch,
 }
 
+/// Just a range function that can works in reverse:
+/// range(0, 5) = [0, 1, 2, 3, 4]
+/// range(5, 0) = [5, 4, 3, 2, 1]
+fn range(start: usize, end: usize) -> Box<Iterator<Item = usize>> {
+    if start < end {
+        Box::new(start..end)
+    } else {
+        Box::new((end..start).map(move |e| start - e))
+    }
+}
+
 fn calc_gain_bins(
     train: &TrainDataset,
     indices: &[usize],
@@ -55,15 +66,6 @@ fn calc_gain_bins(
     if max_bin == min_bin || max_bin == 0 {
         // Not possible to split if there is just one bin
         return None;
-    }
-
-    // Just a range function that can works in reverse: range(5, 0) = [5, 4, 3, 2, 1]
-    fn range(start: usize, end: usize) -> Box<Iterator<Item = usize>> {
-        if start < end {
-            Box::new(start..end)
-        } else {
-            Box::new((end..start).map(move |e| start - e))
-        }
     }
 
     // Compute the gain by looping over

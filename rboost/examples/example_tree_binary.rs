@@ -3,47 +3,10 @@
 /// WARNING: boosting is NOT ready, do NOT use it for real work
 extern crate cpuprofiler;
 extern crate csv;
-extern crate failure;
 extern crate rboost;
 extern crate serde_json;
 
-use rboost::{parse_csv, BinaryLogLoss, DecisionTree, TreeParams};
-use rustlearn::prelude::Array;
-
-fn roc_auc_score(y_true: &[f64], y_hat: &[f64]) -> Result<f32, Box<::std::error::Error>> {
-    for &y in y_true {
-        assert!((y == 0.) | (y == 1.), "Target must be 0 or 1, got {}", y)
-    }
-    for &proba in y_hat {
-        assert!(
-            (proba >= 0.) & (proba <= 1.),
-            "Prediction must be between 0 and 1, got {}",
-            proba
-        )
-    }
-    let y_true: Vec<_> = y_true.iter().map(|e| *e as f32).collect();
-    let y_true: Array = Array::from(y_true);
-    let y_hat: Vec<_> = y_hat.iter().map(|e| *e as f32).collect();
-    let y_hat: Array = Array::from(y_hat);
-    Ok(::rustlearn::metrics::roc_auc_score(&y_true, &y_hat)?)
-}
-
-fn accuracy_score(y_true: &[f64], y_hat: &[f64]) -> f32 {
-    let mut n_ok = 0;
-    for (&a, &b) in y_true.iter().zip(y_hat) {
-        let a = if a == 0. {
-            false
-        } else if a == 1. {
-            true
-        } else {
-            panic!("Label must be 0 or 1, got {}", a)
-        };
-        if a == (b > 0.5) {
-            n_ok += 1;
-        }
-    }
-    (n_ok as f32) / (y_true.len() as f32)
-}
+use rboost::{accuracy_score, parse_csv, roc_auc_score, BinaryLogLoss, DecisionTree, TreeParams};
 
 fn main() -> Result<(), Box<::std::error::Error>> {
     let train = include_str!("../data/binary.train");
@@ -76,7 +39,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         println!(
             "TRAIN: ROC AUC {:.8}, accuracy {:.8}",
             roc_auc_score(&train.target, &yhat_train)?,
-            accuracy_score(&train.target, &yhat_train),
+            accuracy_score(&train.target, &yhat_train)?,
         );
 
         let yhat_test: Vec<f64> = (0..test.features.n_rows())
@@ -85,7 +48,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         println!(
             "TEST:  ROC AUC {:.8}, accuracy {:.8}",
             roc_auc_score(&test.target, &yhat_test)?,
-            accuracy_score(&test.target, &yhat_test),
+            accuracy_score(&test.target, &yhat_test)?,
         );
     }
 

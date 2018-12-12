@@ -55,7 +55,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         // We have to compute the weights first because they depends on &mut rng
         let random_init: Vec<_> = (0..rf_params.n_trees)
             .map(|_| {
-                let mut weights: Vec<_> = train.target.iter().map(|_| 0.).collect();
+                let mut weights = vec![0.; train.n_rows()];
                 let indices: Vec<_> = (0..train.target.len()).collect();
                 for _ in train.target {
                     weights[*rng.choose(&indices).expect(SHOULD_NOT_HAPPEN)] += 1.;
@@ -67,10 +67,10 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
             .collect();
 
         // We don't do boosting so the initial value is just the default one
-        let train_scores: Vec<_> = train.target.iter().map(|_| 0.).collect();
+        let train_scores = vec![0.; train.n_rows()];
 
         // Store the sum of the cross-validated predictions and the number of predictions done
-        let predictions: Vec<_> = train.target.iter().map(|_| (0., 0)).collect();
+        let predictions = vec![(0., 0); train.n_rows()];
         let predictions = Arc::new(Mutex::new(predictions));
 
         let models: Vec<_> = random_init
@@ -83,7 +83,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
                 train.update_grad_hessian(&loss, &train_scores, &sample_weights);
                 train.columns = columns;
 
-                let mut tree_predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
+                let mut tree_predictions = vec![0.; train.n_rows()];
 
                 // We filter the indices with non-null weights
                 let (mut train_indices, mut test_indices) = (Vec::new(), Vec::new());
@@ -118,7 +118,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         let predictions = predictions.lock().expect("Poisoned mutex");
         let predictions = predictions
             .iter()
-            .map(|(pred, n)| *pred / f64::from(*n))
+            .map(|(pred, n)| *pred / (*n as f64))
             .map(|latent| loss.get_target(latent))
             .collect();
 

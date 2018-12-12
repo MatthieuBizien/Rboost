@@ -4,7 +4,6 @@
 
 extern crate cpuprofiler;
 extern crate csv;
-extern crate failure;
 extern crate rboost;
 extern crate serde_json;
 

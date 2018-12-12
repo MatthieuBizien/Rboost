@@ -38,6 +38,20 @@ pub struct Dataset {
 }
 
 impl Dataset {
+    pub fn features(&self) -> &ColumnMajorMatrix<f64> {
+        &self.features
+    }
+    pub fn target(&self) -> &[f64] {
+        &self.target
+    }
+    pub fn n_rows(&self) -> usize {
+        self.features.n_rows()
+    }
+
+    pub fn n_cols(&self) -> usize {
+        self.features.n_cols()
+    }
+
     /// Rank per columns: the smallest value will have the rank 1,
     /// two equals values will have the same rank.
     /// NAN values will have the rank 0.
@@ -186,18 +200,24 @@ pub struct PreparedDataset<'a> {
 }
 
 impl<'a> PreparedDataset<'a> {
-    pub fn target(&'a self) -> &'a ColumnMajorMatrix<f64> {
-        self.features
+    pub fn target(&'a self) -> &'a [f64] {
+        self.target
     }
     pub fn features(&'a self) -> &'a ColumnMajorMatrix<f64> {
         self.features
     }
-}
 
-impl<'a> PreparedDataset<'a> {
+    pub fn n_rows(&self) -> usize {
+        self.features.n_rows()
+    }
+
+    pub fn n_cols(&self) -> usize {
+        self.features.n_cols()
+    }
+
     pub(crate) fn as_train_data(&'a self, loss: &impl Loss) -> TrainDataset<'a> {
-        let zero_vec: Vec<_> = self.target.iter().map(|_| 0.).collect();
-        let weights: Vec<_> = self.target.iter().map(|_| 1.).collect();
+        let zero_vec = vec![0.; self.n_rows()];
+        let weights = vec![1.; self.n_rows()];
         let columns: Vec<_> = (0..self.features.n_cols()).collect();
         let mut train = TrainDataset {
             grad: zero_vec.clone(),

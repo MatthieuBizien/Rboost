@@ -9,7 +9,7 @@ use crate::tree_direct::build_direct;
 
 /// Parameters for building the tree.
 ///
-/// They are the same than Xgboost https://xgboost.readthedocs.io/en/latest/parameter.html
+/// They are the same than Xgboost <https://xgboost.readthedocs.io/en/latest/parameter.html>
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TreeParams {
     pub gamma: f64,
@@ -164,10 +164,10 @@ impl<L: Loss> DecisionTree<L> {
         params: &TreeParams,
         loss: L,
     ) -> FitResult<Self> {
-        let mut indices: Vec<_> = (0..train.target.len()).collect();
+        let indices: Vec<_> = (0..train.target.len()).collect();
         let train = train.as_train_data(&loss);
-        let node = Node::build_from_train_data(&train, &mut indices, predictions, params);
-        Ok(DecisionTree { root: node, loss })
+        let node = Node::build_from_train_data(&train, &indices, predictions, params);
+        Ok(Self { root: node, loss })
     }
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {
         let o = self.root.predict(features);
@@ -197,7 +197,7 @@ mod tests {
         let loss = RegLoss::default();
         let train = train.as_prepared_data(3_000)?;
 
-        let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
+        let mut predictions = vec![0.; train.n_rows()];
         let mut params = TreeParams::new();
         params.max_depth = 6;
 
@@ -234,7 +234,7 @@ mod tests {
         let loss = RegLoss::default();
         let train = train.as_prepared_data(0)?;
 
-        let mut predictions: Vec<_> = train.target.iter().map(|_| 0.).collect();
+        let mut predictions = vec![0.; train.n_rows()];
         let mut params = TreeParams::new();
         params.max_depth = 6;
 

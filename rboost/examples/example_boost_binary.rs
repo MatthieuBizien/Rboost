@@ -9,8 +9,7 @@ extern crate serde_json;
 use cpuprofiler::PROFILER;
 use rand::prelude::{SeedableRng, SmallRng};
 use rboost::{
-    accuracy_score, parse_csv, roc_auc_score, BinaryLogLoss, Booster, BoosterParams, TreeParams,
-    GBT,
+    accuracy_score, parse_csv, roc_auc_score, BinaryLogLoss, BoosterParams, TreeParams, GBT,
 };
 use std::time::Instant;
 
@@ -24,8 +23,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     let mut rng = SmallRng::from_seed(seed);
 
     let booster_params = BoosterParams {
-        learning_rate: 1.,
-        booster: Booster::Geometric,
+        learning_rate: 0.1,
         colsample_bytree: 1.,
     };
     let tree_params = TreeParams {

@@ -31,7 +31,7 @@ pub use crate::tree::*;
 
 pub(crate) static DEFAULT_GAMMA: f64 = 0.;
 pub(crate) static DEFAULT_LAMBDA: f64 = 1.;
-pub(crate) static DEFAULT_LEARNING_RATE: f64 = 0.8;
+pub(crate) static DEFAULT_LEARNING_RATE: f64 = 0.1;
 pub(crate) static DEFAULT_MAX_DEPTH: usize = 3;
 pub(crate) static DEFAULT_MIN_SPLIT_GAIN: f64 = 0.1;
 pub(crate) static DEFAULT_COLSAMPLE_BYTREE: f64 = 1.;

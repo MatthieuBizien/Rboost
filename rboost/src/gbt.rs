@@ -1,22 +1,13 @@
 use crate::math::sample_indices_ratio;
 use crate::{
-    cosine_simularity, min_diff_vectors, ColumnMajorMatrix, Dataset, FitResult, Loss, Node,
-    PreparedDataset, StridedVecView, TreeParams, DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE,
-    SHOULD_NOT_HAPPEN,
+    ColumnMajorMatrix, Dataset, FitResult, Loss, Node, PreparedDataset, StridedVecView, TreeParams,
+    DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE, SHOULD_NOT_HAPPEN,
 };
 use rand::prelude::Rng;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Booster {
-    Geometric,
-    CosineSimilarity,
-    MinDiffVectors,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BoosterParams {
     pub learning_rate: f64,
-    pub booster: Booster,
     pub colsample_bytree: f64,
 }
 
@@ -24,7 +15,6 @@ impl BoosterParams {
     pub fn new() -> Self {
         BoosterParams {
             learning_rate: DEFAULT_LEARNING_RATE,
-            booster: Booster::Geometric,
             colsample_bytree: DEFAULT_COLSAMPLE_BYTREE,
         }
     }
@@ -77,7 +67,6 @@ impl<L: Loss> GBT<L> {
 
         train.check_data()?;
 
-        let mut shrinkage_rate = 1.;
         let mut best_iteration = 0;
         let mut best_val_loss = None;
         let size_train = train.target.len();
@@ -118,16 +107,7 @@ impl<L: Loss> GBT<L> {
                 &tree_params,
             );
 
-            tree_weights.push(match booster_params.booster {
-                Booster::CosineSimilarity => {
-                    shrinkage_rate * cosine_simularity(&train.grad, &train_preds.column(iter_cnt))
-                }
-                Booster::Geometric => shrinkage_rate,
-                Booster::MinDiffVectors => {
-                    shrinkage_rate * min_diff_vectors(&train.grad, &train_preds.column(iter_cnt))
-                }
-            });
-            shrinkage_rate *= booster_params.learning_rate;
+            tree_weights.push(booster_params.learning_rate);
 
             if let Some(valid) = valid {
                 let val_predictions = val_predictions.as_mut().expect(SHOULD_NOT_HAPPEN);

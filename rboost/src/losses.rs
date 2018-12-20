@@ -4,8 +4,13 @@ use crate::sum;
 pub trait Loss: std::marker::Sync {
     fn calc_gradient_hessian(&self, target: &[f64], predictions: &[f64]) -> (Vec<f64>, Vec<f64>);
     fn calc_loss(&self, target: &[f64], predictions: &[f64]) -> f64;
+
     /// Transform from latent variables (eg. odd for logistic regression) to the target (eg. proba)
     fn get_target(&self, latent: f64) -> f64;
+
+    /// Initial value for the prediction. Useful for limiting bias in regression and unbalanced
+    /// classes for classification.
+    fn get_initial_prediction(&self, target: &[f64]) -> f64;
 }
 
 /// L2 Loss, ie the usual loss for a regression.
@@ -40,6 +45,10 @@ impl Loss for RegLoss {
 
     fn get_target(&self, latent: f64) -> f64 {
         latent
+    }
+
+    fn get_initial_prediction(&self, target: &[f64]) -> f64 {
+        target.iter().sum::<f64>() / (target.len() as f64)
     }
 }
 
@@ -89,6 +98,12 @@ impl Loss for BinaryLogLoss {
 
     fn get_target(&self, latent: f64) -> f64 {
         1. / (1. + latent.exp())
+    }
+
+    fn get_initial_prediction(&self, target: &[f64]) -> f64 {
+        let mean_val = (target.iter().sum::<f64>()) / (target.len() as f64);
+        let mean_val = mean_val.max(1e-8).min(1. - 1e-8);
+        (mean_val / (1. - mean_val)).ln()
     }
 }
 

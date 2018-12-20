@@ -1,6 +1,8 @@
+use crate::math::add;
+use crate::math::mul_add;
 use crate::math::sample_indices_ratio;
 use crate::{
-    ColumnMajorMatrix, Dataset, FitResult, Loss, Node, PreparedDataset, StridedVecView, TreeParams,
+    Dataset, FitResult, Loss, Node, PreparedDataset, StridedVecView, TreeParams,
     DEFAULT_COLSAMPLE_BYTREE, DEFAULT_LEARNING_RATE, SHOULD_NOT_HAPPEN,
 };
 use rand::prelude::Rng;
@@ -33,20 +35,7 @@ pub struct GBT<L: Loss> {
     tree_params: TreeParams,
     best_iteration: usize,
     loss: L,
-}
-
-/// Compute the prediction for multiple trees of a GBT.
-fn calc_full_prediction(
-    predictions: &ColumnMajorMatrix<f64>,
-    tree_weights: &[f64],
-    dest: &mut [f64],
-) {
-    dest.iter_mut().for_each(|e| *e = 0.);
-    for (predictions, &weight) in predictions.columns().zip(tree_weights) {
-        for (dest, prediction) in dest.iter_mut().zip(predictions) {
-            *dest += prediction * weight;
-        }
-    }
+    initial_prediction: f64,
 }
 
 impl<L: Loss> GBT<L> {
@@ -67,29 +56,24 @@ impl<L: Loss> GBT<L> {
 
         train.check_data()?;
 
+        let initial_prediction = loss.get_initial_prediction(&train.target);
+
         let mut best_iteration = 0;
         let mut best_val_loss = None;
         let size_train = train.target.len();
         let size_val = valid.map(|e| e.target.len());
 
-        // Predictions per tree.
-        let mut train_preds =
-            ColumnMajorMatrix::from_function(size_train, num_boost_round, |_, _| 0.);
-        let mut val_predictions = size_val
-            .map(|size_val| ColumnMajorMatrix::from_function(size_val, num_boost_round, |_, _| 0.));
-
-        // Weights of every trees
-        let mut tree_weights = Vec::new();
-
         // Indices and weights per tree. We create it before  so we don't have to allocate a new vector at
         // each iteration
         let indices: Vec<usize> = (0..train.target.len()).collect();
         let sample_weights = vec![1.; size_train];
-        let mut train_scores = vec![0.; size_train];
-        let mut val_scores = size_val.map(|size_val| vec![0.; size_val]);
+        let mut train_scores = vec![initial_prediction; size_train];
+        let mut val_scores = size_val.map(|size_val| vec![initial_prediction; size_val]);
+
+        let mut train_cache_score = vec![0.; size_train];
+        let mut val_cache_score = size_val.map(|size_val| vec![0.; size_val]);
 
         for iter_cnt in 0..(num_boost_round) {
-            calc_full_prediction(&train_preds, &tree_weights, &mut train_scores);
             train.update_grad_hessian(&loss, &train_scores, &sample_weights);
 
             if booster_params.colsample_bytree < 1. {
@@ -100,21 +84,21 @@ impl<L: Loss> GBT<L> {
                 );
             }
 
-            let learner = Node::build_from_train_data(
-                &train,
-                &indices,
-                train_preds.column_mut(iter_cnt),
-                &tree_params,
-            );
+            let mut learner =
+                Node::build_from_train_data(&train, &indices, &mut train_cache_score, &tree_params);
 
-            tree_weights.push(booster_params.learning_rate);
+            mul_add(
+                &train_cache_score,
+                booster_params.learning_rate,
+                &mut train_scores,
+            );
+            learner.apply_shrinking(booster_params.learning_rate);
 
             if let Some(valid) = valid {
-                let val_predictions = val_predictions.as_mut().expect(SHOULD_NOT_HAPPEN);
-                let mut val_scores = val_scores.as_mut().expect(SHOULD_NOT_HAPPEN);
-                let dest = val_predictions.column_mut(iter_cnt);
-                dest.clone_from_slice(&learner.par_predict(&valid.features));
-                calc_full_prediction(&val_predictions, &tree_weights, &mut val_scores);
+                let val_cache_score = val_cache_score.as_mut().expect(SHOULD_NOT_HAPPEN);
+                val_cache_score.clone_from_slice(&learner.par_predict(&valid.features));
+                let val_scores = val_scores.as_mut().expect(SHOULD_NOT_HAPPEN);
+                add(&val_cache_score, val_scores);
                 let val_loss =
                     loss.calc_loss(&valid.target, &val_scores) / (valid.target.len() as f64);
                 let val_loss = val_loss.sqrt();
@@ -137,15 +121,13 @@ impl<L: Loss> GBT<L> {
             };
         }
 
-        for (tree, &weight) in models.iter_mut().zip(&tree_weights) {
-            tree.apply_shrinking(weight);
-        }
         Ok(Self {
             models,
             booster_params,
             tree_params,
             best_iteration,
             loss,
+            initial_prediction,
         })
     }
 
@@ -154,7 +136,7 @@ impl<L: Loss> GBT<L> {
         if o.is_nan() {
             panic!("NAN in output of prediction");
         }
-        self.loss.get_target(o)
+        self.loss.get_target(o + self.initial_prediction)
     }
 
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {

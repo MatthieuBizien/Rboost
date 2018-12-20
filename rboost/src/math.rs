@@ -41,6 +41,18 @@ pub(crate) fn sub_vec(a: &mut [f64], b: &[f64]) {
     }
 }
 
+#[allow(dead_code)]
+pub(crate) fn mul_add(a: &[f64], b: f64, out: &mut [f64]) {
+    assert_eq!(a.len(), out.len());
+    out.iter_mut().zip(a).for_each(|(out, a)| *out += a * b);
+}
+
+#[allow(dead_code)]
+pub(crate) fn add(a: &[f64], out: &mut [f64]) {
+    assert_eq!(a.len(), out.len());
+    out.iter_mut().zip(a).for_each(|(out, a)| *out += a);
+}
+
 pub(crate) fn sample_indices_ratio(rng: &mut impl Rng, length: usize, ratio: f64) -> Vec<usize> {
     let n_cols_f64 = ratio * (length as f64);
     let mut n_cols = n_cols_f64.floor() as usize;

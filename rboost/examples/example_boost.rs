@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         gamma: 0.,
         lambda: 1.,
         max_depth: 4,
-        min_split_gain: 0.3,
+        min_split_gain: 0.1,
     };
     let n_bins = 2048;
     println!(
@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         &booster_params,
         &tree_params,
         &mut train.as_prepared_data(n_bins)?,
-        1000,
+        100,
         Some(&test),
         1000,
         RegLoss::default(),

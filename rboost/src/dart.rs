@@ -9,6 +9,7 @@ use rand::prelude::Rng;
 pub struct DartParams {
     pub colsample_bytree: f64,
     pub dropout_rate: f64,
+    pub learning_rate: f64,
 }
 
 impl DartParams {
@@ -16,6 +17,7 @@ impl DartParams {
         DartParams {
             colsample_bytree: DEFAULT_COLSAMPLE_BYTREE,
             dropout_rate: 0.5,
+            learning_rate: 1.0,
         }
     }
 }
@@ -36,6 +38,7 @@ pub struct Dart<L: Loss> {
     tree_params: TreeParams,
     best_iteration: usize,
     loss: L,
+    initial_prediction: f64,
 }
 
 /// Compute the prediction for multiple trees of a DART
@@ -44,14 +47,16 @@ fn calc_full_prediction(
     tree_weights: &[f64],
     filter: &[bool],
     dest: &mut [f64],
+    learning_rate: f64,
+    initial_prediction: f64,
 ) {
-    dest.iter_mut().for_each(|e| *e = 0.);
+    dest.iter_mut().for_each(|e| *e = initial_prediction);
     for ((predictions, &weight), &keep) in predictions.columns().zip(tree_weights).zip(filter) {
         if !keep {
             continue;
         }
         for (dest, prediction) in dest.iter_mut().zip(predictions) {
-            *dest += prediction * weight;
+            *dest += prediction * weight * learning_rate;
         }
     }
 }
@@ -73,6 +78,7 @@ impl<L: Loss> Dart<L> {
         let mut train = train_set.as_train_data(&loss);
 
         train.check_data()?;
+        let initial_prediction = loss.get_initial_prediction(&train.target);
 
         let mut best_iteration = 0;
         let mut best_val_loss = None;
@@ -116,7 +122,14 @@ impl<L: Loss> Dart<L> {
                 }
             }
 
-            calc_full_prediction(&train_preds, &tree_weights, &active_tree, &mut train_scores);
+            calc_full_prediction(
+                &train_preds,
+                &tree_weights,
+                &active_tree,
+                &mut train_scores,
+                booster_params.learning_rate,
+                initial_prediction,
+            );
             train.update_grad_hessian(&loss, &train_scores, &sample_weights);
 
             if booster_params.colsample_bytree < 1. {
@@ -147,6 +160,8 @@ impl<L: Loss> Dart<L> {
                     &tree_weights,
                     &active_tree,
                     &mut val_scores,
+                    1.,
+                    initial_prediction,
                 );
                 let val_loss =
                     loss.calc_loss(&valid.target, &val_scores) / (valid.target.len() as f64);
@@ -179,6 +194,7 @@ impl<L: Loss> Dart<L> {
             tree_params,
             best_iteration,
             loss,
+            initial_prediction,
         })
     }
 
@@ -187,7 +203,7 @@ impl<L: Loss> Dart<L> {
         if o.is_nan() {
             panic!("NAN in output of prediction");
         }
-        self.loss.get_target(o)
+        self.loss.get_target(o + self.initial_prediction)
     }
 
     pub fn predict(&self, features: &StridedVecView<f64>) -> f64 {

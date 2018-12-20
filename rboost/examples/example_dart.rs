@@ -24,14 +24,15 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     let booster_params = DartParams {
         colsample_bytree: 0.95,
         dropout_rate: 0.97,
+        learning_rate: 0.8,
     };
     let tree_params = TreeParams {
-        gamma: 1.,
-        lambda: 10.,
-        max_depth: 3,
+        gamma: 0.,
+        lambda: 1.,
+        max_depth: 4,
         min_split_gain: 1.,
     };
-    let n_bins = 2048;
+    let n_bins = 256;
     println!(
         "Params booster={:?} tree{:?} n_bins={}",
         booster_params, tree_params, n_bins

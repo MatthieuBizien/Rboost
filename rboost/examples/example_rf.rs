@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
 
     // We set the params for the RF and the trees
     let mut rf_params = RFParams::new();
-    rf_params.colsample_bytree = 0.9;
+    rf_params.colsample_bytree = 1.0;
     rf_params.n_trees = 100;
     let tree_params = TreeParams {
         gamma: 1.,

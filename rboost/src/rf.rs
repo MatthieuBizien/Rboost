@@ -40,6 +40,7 @@ pub struct RandomForest<L: Loss> {
     rf_params: RFParams,
     tree_params: TreeParams,
     loss: L,
+    initial_prediction: f64,
 }
 
 impl<L: Loss + std::marker::Sync> RandomForest<L> {
@@ -51,6 +52,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         rng: &mut impl Rng,
     ) -> FitResult<(RandomForest<L>, Vec<f64>)> {
         train.check_data()?;
+        let initial_prediction = loss.get_initial_prediction(&train.target);
 
         // We have to compute the weights first because they depends on &mut rng
         let random_init: Vec<_> = (0..rf_params.n_trees)
@@ -67,7 +69,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
             .collect();
 
         // We don't do boosting so the initial value is just the default one
-        let train_scores = vec![0.; train.n_rows()];
+        let train_scores = vec![initial_prediction; train.n_rows()];
 
         // Store the sum of the cross-validated predictions and the number of predictions done
         let predictions = vec![(0., 0); train.n_rows()];
@@ -119,7 +121,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
         let predictions = predictions
             .iter()
             .map(|(pred, n)| *pred / (*n as f64))
-            .map(|latent| loss.get_target(latent))
+            .map(|latent| loss.get_target(latent + initial_prediction))
             .collect();
 
         let rf = RandomForest {
@@ -127,6 +129,7 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
             rf_params: (*rf_params).clone(),
             tree_params: (*tree_params).clone(),
             loss,
+            initial_prediction,
         };
 
         Ok((rf, predictions))
@@ -142,6 +145,6 @@ impl<L: Loss + std::marker::Sync> RandomForest<L> {
             panic!("NAN in output of prediction");
         }
         let o = o / self.models.len() as f64;
-        self.loss.get_target(o)
+        self.loss.get_target(o + self.initial_prediction)
     }
 }

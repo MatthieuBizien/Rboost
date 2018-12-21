@@ -8,16 +8,16 @@ pub struct StridedVecView<'a, A: 'a> {
 }
 
 impl<'a, A: 'a> StridedVecView<'a, A> {
-    pub fn new(data: &'a [A], start: usize, stride: usize) -> StridedVecView<A> {
-        StridedVecView {
+    pub fn new(data: &'a [A], start: usize, stride: usize) -> Self {
+        Self {
             data,
             start,
             stride,
         }
     }
 
-    pub fn from_slice(data: &'a [A]) -> StridedVecView<A> {
-        StridedVecView {
+    pub fn from_slice(data: &'a [A]) -> Self {
+        Self {
             data,
             start: 0,
             stride: 1,
@@ -51,7 +51,7 @@ pub struct ColumnMajorMatrix<A> {
 }
 
 impl<A> ColumnMajorMatrix<A> {
-    pub fn from_columns(columns: Vec<Vec<A>>) -> ColumnMajorMatrix<A> {
+    pub fn from_columns(columns: Vec<Vec<A>>) -> Self {
         let (n_cols, n_rows) = (columns.len(), columns[0].len());
         let mut values = Vec::with_capacity(n_rows * n_cols);
         for column in columns {
@@ -60,14 +60,14 @@ impl<A> ColumnMajorMatrix<A> {
             }
         }
         assert_eq!(n_rows * n_cols, values.len());
-        ColumnMajorMatrix {
+        Self {
             n_rows,
             n_cols,
             values,
         }
     }
 
-    pub fn from_rows(rows: Vec<Vec<A>>) -> ColumnMajorMatrix<A> {
+    pub fn from_rows(rows: Vec<Vec<A>>) -> Self {
         let (n_rows, n_cols) = (rows.len(), rows[0].len());
         let mut values: Vec<A> = Vec::with_capacity(n_rows * n_cols);
         let mut rows: Vec<_> = rows.into_iter().map(|c| c.into_iter()).collect();
@@ -86,25 +86,21 @@ impl<A> ColumnMajorMatrix<A> {
             }
         }
         assert_eq!(n_rows * n_cols, values.len());
-        ColumnMajorMatrix {
+        Self {
             n_rows,
             n_cols,
             values,
         }
     }
 
-    pub fn from_function(
-        n_rows: usize,
-        n_cols: usize,
-        f: impl Fn(usize, usize) -> A,
-    ) -> ColumnMajorMatrix<A> {
+    pub fn from_function(n_rows: usize, n_cols: usize, f: impl Fn(usize, usize) -> A) -> Self {
         let mut values = Vec::new();
         for col in 0..n_cols {
             for row in 0..n_rows {
                 values.push(f(row, col));
             }
         }
-        ColumnMajorMatrix {
+        Self {
             n_rows,
             n_cols,
             values,

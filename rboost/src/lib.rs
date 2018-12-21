@@ -14,6 +14,7 @@ mod losses;
 mod math;
 mod matrix;
 mod rf;
+mod sparse;
 mod tree;
 mod tree_bin;
 mod tree_direct;
@@ -27,6 +28,7 @@ pub use crate::losses::*;
 pub use crate::math::*;
 pub use crate::matrix::*;
 pub use crate::rf::*;
+pub use crate::sparse::*;
 pub use crate::tree::*;
 
 pub(crate) static DEFAULT_GAMMA: f64 = 0.;

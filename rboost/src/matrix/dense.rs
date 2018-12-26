@@ -1,4 +1,5 @@
 use core::ops::Index;
+use std::ops::IndexMut;
 
 /// Slice of data with a stride.
 pub struct StridedVecView<'a, A: 'a> {
@@ -144,6 +145,12 @@ impl<A> Index<(usize, usize)> for ColumnMajorMatrix<A> {
         // No need to check for col because it fill be out of the buffer
         assert!(row < self.n_rows);
         &self.values[row + col * self.n_rows]
+    }
+}
+
+impl<A> IndexMut<(usize, usize)> for ColumnMajorMatrix<A> {
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut A {
+        &mut self.values[row + col * self.n_rows]
     }
 }
 

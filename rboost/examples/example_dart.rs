@@ -26,12 +26,11 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         dropout_rate: 0.97,
         learning_rate: 0.8,
     };
-    let tree_params = TreeParams {
-        gamma: 0.,
-        lambda: 1.,
-        max_depth: 4,
-        min_split_gain: 1.,
-    };
+
+    let mut tree_params = TreeParams::default();
+    tree_params.max_depth = 4;
+    tree_params.min_split_gain = 1.;
+
     let n_bins = 256;
     println!(
         "Params booster={:?} tree{:?} n_bins={}",

@@ -30,12 +30,12 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     let mut rf_params = RFParams::new();
     rf_params.colsample_bytree = 0.9;
     rf_params.n_trees = 100;
-    let tree_params = TreeParams {
-        gamma: 1.,
-        lambda: 1.,
-        max_depth: 10,
-        min_split_gain: 1.,
-    };
+
+    let mut tree_params = TreeParams::default();
+    tree_params.gamma = 1.;
+    tree_params.lambda = 1.;
+    tree_params.max_depth = 10;
+    tree_params.min_split_gain = 1.;
 
     // We use binning so the training is much faster.
     let n_bins = 256;

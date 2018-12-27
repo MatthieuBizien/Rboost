@@ -17,12 +17,10 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     let n_bins = 128;
 
     for max_depth in 0..8 {
-        let tree_params = TreeParams {
-            gamma: 0.,
-            lambda: 1.,
-            max_depth,
-            min_split_gain: 0.,
-        };
+        let mut tree_params = TreeParams::default();
+        tree_params.max_depth = max_depth;
+        tree_params.min_split_gain = 0.;
+
         println!("\nParams tree{:?} n_bins={}", tree_params, n_bins);
 
         let mut predictions = vec![0.; train.target.len()];

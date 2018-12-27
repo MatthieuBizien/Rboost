@@ -12,6 +12,7 @@ mod math;
 mod matrix;
 mod rf;
 mod tree;
+mod tree_all;
 mod tree_bin;
 mod tree_direct;
 

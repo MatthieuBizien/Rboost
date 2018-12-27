@@ -5,9 +5,6 @@ use crate::{
 use ord_subset::OrdSubsetIterExt;
 use std::f64::INFINITY;
 
-// Minimum number of rows before it's faster to use the direct algorithm
-static MIN_ROWS_FOR_BINNING: usize = 100;
-
 /// Store the result of a successful split on a node
 struct SplitResult {
     feature_id: usize,
@@ -183,7 +180,7 @@ pub(crate) fn build_bins(
     params: &TreeParams,
 ) -> SplitBinReturn {
     // If the number of indices is too small it's faster to just use the direct algorithm
-    if indices.len() <= MIN_ROWS_FOR_BINNING {
+    if indices.len() <= params.min_rows_for_binning {
         let out = build_direct(train, indices, predictions, depth, params);
         return SplitBinReturn {
             node: out.node,
@@ -198,7 +195,10 @@ pub(crate) fn build_bins(
             for &i in indices {
                 predictions[i] = mean_val;
             }
-            let node = Box::new(Node::Leaf(LeafNode { val: mean_val }));
+            let node = Box::new(Node::Leaf(LeafNode {
+                val: mean_val,
+                n_obs: indices.len(),
+            }));
             return SplitBinReturn { node, mean_val };
         }};
     }
@@ -251,6 +251,7 @@ pub(crate) fn build_bins(
         split_val: best_result.best_val,
         val: mean_val,
         nan_branch: best_result.nan_branch,
+        n_obs: indices.len(),
     }));
 
     SplitBinReturn { node, mean_val }

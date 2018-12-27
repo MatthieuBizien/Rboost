@@ -4,18 +4,20 @@ use crate::{
 };
 //use rayon::prelude::ParallelIterator;
 use crate::losses::Loss;
-use crate::tree_bin::build_bins;
+use crate::tree_all::build_bins2;
 use crate::tree_direct::build_direct;
 
 /// Parameters for building the tree.
 ///
 /// They are the same than Xgboost <https://xgboost.readthedocs.io/en/latest/parameter.html>
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TreeParams {
     pub gamma: f64,
     pub lambda: f64,
     pub max_depth: usize,
     pub min_split_gain: f64,
+    pub recursive_split: bool,
+    pub min_rows_for_binning: usize,
 }
 
 impl TreeParams {
@@ -25,6 +27,8 @@ impl TreeParams {
             lambda: DEFAULT_LAMBDA,
             max_depth: DEFAULT_MAX_DEPTH,
             min_split_gain: DEFAULT_MIN_SPLIT_GAIN,
+            recursive_split: false,
+            min_rows_for_binning: 0,
         }
     }
 }
@@ -35,29 +39,31 @@ impl Default for TreeParams {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) enum NanBranch {
     None,
     Left,
     Right,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) struct SplitNode {
-    pub(crate) left_child: Box<Node>,
-    pub(crate) right_child: Box<Node>,
     pub(crate) split_feature_id: usize,
+    pub(crate) n_obs: usize,
     pub(crate) split_val: f64,
     pub(crate) val: f64,
     pub(crate) nan_branch: NanBranch,
+    pub(crate) left_child: Box<Node>,
+    pub(crate) right_child: Box<Node>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) struct LeafNode {
     pub(crate) val: f64,
+    pub(crate) n_obs: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub(crate) enum Node {
     Split(SplitNode),
     Leaf(LeafNode),
@@ -99,11 +105,43 @@ impl Node {
         predictions: &mut [f64],
         params: &TreeParams,
     ) -> Node {
+        assert_eq!(
+            train
+                .grad
+                .iter()
+                .map(|f| f.is_nan() as usize)
+                .sum::<usize>(),
+            0
+        );
+        assert_eq!(
+            train
+                .hessian
+                .iter()
+                .map(|f| f.is_nan() as usize)
+                .sum::<usize>(),
+            0
+        );
+
         let depth = 0;
         let has_bins = train.n_bins.iter().any(|&n_bins| n_bins > 0);
         if has_bins {
-            let out = build_bins(train, indices, predictions, depth, params);
-            *(out.node)
+            if params.recursive_split {
+                return *crate::tree_bin::build_bins(train, indices, predictions, depth, params)
+                    .node;
+            }
+
+            let mut nodes_of_rows = vec![::std::usize::MAX; train.n_rows()];
+            for &i in indices {
+                nodes_of_rows[i] = 0;
+            }
+            let out = build_bins2(train, &mut nodes_of_rows, predictions, depth, params, 0, 1);
+            assert_eq!(out.len(), 1);
+            let out = match out.into_iter().next() {
+                Some(e) => e.node,
+                _ => panic!(),
+            };
+
+            out
         } else {
             let out = build_direct(train, indices, predictions, depth, params);
             *(out.node)
@@ -152,6 +190,7 @@ impl Node {
 }
 
 /// Decision Tree implementation.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct DecisionTree<L: Loss> {
     root: Node,
     loss: L,
@@ -197,9 +236,58 @@ mod tests {
         let loss = RegLoss::default();
         let train = train.as_prepared_data(3_000)?;
 
-        let mut predictions = vec![0.; train.n_rows()];
+        let mut predictions = vec![::std::f64::NAN; train.n_rows()];
         let mut params = TreeParams::new();
         params.max_depth = 6;
+
+        let tree = DecisionTree::build(&train, &mut predictions, &params, loss)?;
+        let pred2 = tree.par_predict(&train.features);
+        assert_eq!(predictions.len(), pred2.len());
+
+        let diffs: Vec<_> = predictions
+            .iter()
+            .zip(&pred2)
+            .filter(|(&a, &b)| a != b)
+            .collect();
+        assert_eq!(
+            diffs.len(),
+            0,
+            "{} different predictions out of {}, eg. {:?}",
+            diffs.len(),
+            predictions.len(),
+            diffs.into_iter().take(100).collect::<Vec<_>>()
+        );
+
+        let loss_train = rmse(&train.target, &predictions);
+        let loss_test = rmse(&test.target, &tree.par_predict(&test.features));
+        assert!(
+            loss_train <= 0.433,
+            "Train loss too important, expected 0.43062595, got {} (test {})",
+            loss_train,
+            loss_test
+        );
+        assert!(
+            loss_test <= 0.446,
+            "Test loss too important, expected 0.44403195, got {}",
+            loss_test
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_regression_bins_recursive() -> Result<(), Box<::std::error::Error>> {
+        let train = include_str!("../data/regression.train");
+        let train = parse_csv(train, "\t")?;
+        let test = include_str!("../data/regression.test");
+        let test = parse_csv(test, "\t")?;
+
+        let loss = RegLoss::default();
+        let train = train.as_prepared_data(3_000)?;
+
+        let mut predictions = vec![::std::f64::NAN; train.n_rows()];
+        let mut params = TreeParams::new();
+        params.max_depth = 6;
+        params.recursive_split = true;
 
         let tree = DecisionTree::build(&train, &mut predictions, &params, loss)?;
         let pred2 = tree.par_predict(&train.features);
@@ -234,7 +322,7 @@ mod tests {
         let loss = RegLoss::default();
         let train = train.as_prepared_data(0)?;
 
-        let mut predictions = vec![0.; train.n_rows()];
+        let mut predictions = vec![::std::f64::NAN; train.n_rows()];
         let mut params = TreeParams::new();
         params.max_depth = 6;
 

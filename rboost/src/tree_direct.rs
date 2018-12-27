@@ -183,7 +183,10 @@ pub(crate) fn build_direct(
             for &i in indices {
                 predictions[i] = mean_val;
             }
-            let node = Box::new(Node::Leaf(LeafNode { val: mean_val }));
+            let node = Box::new(Node::Leaf(LeafNode {
+                val: mean_val,
+                n_obs: indices.len(),
+            }));
             return DirectReturn { node, mean_val };
         }};
     }
@@ -235,8 +238,8 @@ pub(crate) fn build_direct(
         split_feature_id: best_result.feature_id,
         split_val: best_result.best_val,
         val: mean_val,
-        //nan_branch: NanBranch::None,
         nan_branch: best_result.nan_branch,
+        n_obs: indices.len(),
     }));
 
     DirectReturn { node, mean_val }

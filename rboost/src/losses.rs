@@ -53,7 +53,7 @@ impl Loss for RegLoss {
 }
 
 /// Binary log loss, for two-class classification
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct BinaryLogLoss {
     // Nothing inside
 }

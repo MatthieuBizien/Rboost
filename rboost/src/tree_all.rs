@@ -28,7 +28,6 @@ fn range(start: usize, end: usize) -> Box<Iterator<Item = usize>> {
 fn compute_gain(
     grads: &[f64],
     hessians: &[f64],
-    is_empty: &[bool],
     start: usize,
     end: usize,
     sum_grad: f64,
@@ -41,9 +40,6 @@ fn compute_gain(
     let mut best_gain = -INFINITY;
     let mut best_bin = 0;
     for bin in range(start, end) {
-        if is_empty[bin] {
-            // continue;
-        }
         grad_left += grads[bin];
         hessian_left += hessians[bin];
 
@@ -96,27 +92,24 @@ fn calc_gains_bin(
 
     let mut grads = ColumnMajorMatrix::from_function(n_bins, n_nodes, |_, _| 0.);
     let mut hessians = ColumnMajorMatrix::from_function(n_bins, n_nodes, |_, _| 0.);
-    let mut is_empty = ColumnMajorMatrix::from_function(n_bins, n_nodes, |_, _| true);
-
-    // placeholder value: if it don't change we have no data
-    let mut min_bin = vec![n_bins; n_nodes];
-    let mut max_bin = vec![0; n_nodes];
     let mut n_nan = vec![0; n_nodes];
 
-    // We iterate over all the data to compute the values of the grads and hessians per bin and node
-    for i in 0..train.n_rows() {
-        if let Some(node) = get_node_idx(nodes_of_rows[i], min_node, max_node) {
-            match train.bins[(i, feature_id)] {
+    for (((bin, &node), &grad), &hessian) in train
+        .bins
+        .column(feature_id)
+        .iter()
+        .zip(nodes_of_rows)
+        .zip(&train.grad)
+        .zip(&train.hessian)
+    {
+        if let Some(node) = get_node_idx(node, min_node, max_node) {
+            match bin {
                 Some(bin) => {
-                    let bin = bin as usize;
-                    min_bin[node] = min_bin[node].min(bin);
-                    max_bin[node] = max_bin[node].max(bin);
-                    grads[(bin, node)] += train.grad[i];
-                    hessians[(bin, node)] += train.hessian[i];
-                    is_empty[(bin, node)] = false;
+                    let bin = *bin as usize;
+                    grads[(bin, node)] += grad;
+                    hessians[(bin, node)] += hessian;
                 }
                 None => {
-                    // NAN values are implicitly in sum_grad and sum_hessian
                     n_nan[node] += 1;
                 }
             }
@@ -130,7 +123,6 @@ fn calc_gains_bin(
                 compute_gain(
                     grads.column(node),
                     hessians.column(node),
-                    is_empty.column(node),
                     start,
                     end,
                     sums_grad[node],
@@ -140,7 +132,8 @@ fn calc_gains_bin(
             };
 
             // First pass: we loop over all the bins left to right.
-            let (best_gain, best_bin) = compute_gain(min_bin[node], max_bin[node]);
+            let (best_gain, best_bin) = compute_gain(0, n_bins);
+            // Short path if there is no NAN
             if n_nan[node] == 0 {
                 // Short path if there is no NAN
                 return Some(GainResult {
@@ -153,7 +146,7 @@ fn calc_gains_bin(
 
             // If there is NAN, we try to get the best path in the reverse order, so we can choose if the
             // default path for NAN should be in the right branch or the left branch.
-            let (best_gain_rev, best_bin_rev) = compute_gain(max_bin[node], min_bin[node]);
+            let (best_gain_rev, best_bin_rev) = compute_gain(n_bins, 0);
 
             if best_gain > best_gain_rev {
                 // For the "left to right" order, the NAN are implicitly in the left branch.

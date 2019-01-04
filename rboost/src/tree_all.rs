@@ -3,6 +3,7 @@ use crate::{
     TreeParams, SHOULD_NOT_HAPPEN,
 };
 use either::Either;
+use itertools::izip;
 use rayon::prelude::*;
 use std::f64::INFINITY;
 
@@ -94,14 +95,12 @@ fn calc_gains_bin(
     let mut hessians = ColumnMajorMatrix::from_function(n_bins, n_nodes, |_, _| 0.);
     let mut n_nan = vec![0; n_nodes];
 
-    for (((bin, &node), &grad), &hessian) in train
-        .bins
-        .column(feature_id)
-        .iter()
-        .zip(nodes_of_rows)
-        .zip(&train.grad)
-        .zip(&train.hessian)
-    {
+    for (bin, &node, &grad, &hessian) in izip!(
+        train.bins.column(feature_id),
+        nodes_of_rows,
+        &train.grad,
+        &train.hessian
+    ) {
         if let Some(node) = get_node_idx(node, min_node, max_node) {
             match bin {
                 Some(bin) => {
@@ -228,10 +227,10 @@ pub(crate) fn build_bins2(
     let mut sums_grad = vec![0.; max_node - min_node];
     let mut sums_hessian = vec![0.; max_node - min_node];
     let mut n_obs_per_node = vec![0; max_node - min_node];
-    for i in 0..train.n_rows() {
-        if let Some(node) = get_node_idx(nodes_of_rows[i], min_node, max_node) {
-            sums_grad[node] += train.grad[i];
-            sums_hessian[node] += train.hessian[i];
+    for (&node, grad, hessian) in izip!(nodes_of_rows.iter(), &train.grad, &train.hessian) {
+        if let Some(node) = get_node_idx(node, min_node, max_node) {
+            sums_grad[node] += grad;
+            sums_hessian[node] += hessian;
             n_obs_per_node[node] += 1;
         }
     }
@@ -270,10 +269,10 @@ pub(crate) fn build_bins2(
 
     // Update the predictions for nodes that will not be split
     if n_with_child != nodes.len() {
-        for i in 0..train.n_rows() {
-            if let Some(node) = get_node_idx(nodes_of_rows[i], min_node, max_node) {
+        for (node, prediction) in nodes_of_rows.iter().zip(predictions.iter_mut()) {
+            if let Some(node) = get_node_idx(*node, min_node, max_node) {
                 if let Either::Right(val) = nodes[node] {
-                    predictions[i] = val;
+                    *prediction = val;
                 }
             }
         }
@@ -301,18 +300,18 @@ pub(crate) fn build_bins2(
 
     // For every node, put them either on the left or on the right.
     // The indices of the new nodes starts at max_node and goes up 2 by 2 when we have a split.
-    for i in 0..train.n_rows() {
-        if let Some(node_idx) = get_node_idx(nodes_of_rows[i], min_node, max_node) {
+    for (i, node) in nodes_of_rows.iter_mut().enumerate() {
+        if let Some(node_idx) = get_node_idx(*node, min_node, max_node) {
             //let node_idx = nodes_of_rows[i] - min_node;
             if let Either::Left((n_node_with_child, split)) = &nodes[node_idx] {
                 if let Some(bin) = train.bins[(i, split.feature_id)] {
                     let n_node_with_child = *n_node_with_child;
                     if bin as usize <= split.bin {
                         // Left child
-                        nodes_of_rows[i] = n_node_with_child * 2 + max_node
+                        *node = n_node_with_child * 2 + max_node
                     } else {
                         // Right child
-                        nodes_of_rows[i] = n_node_with_child * 2 + max_node + 1
+                        *node = n_node_with_child * 2 + max_node + 1
                     }
                 }
             }

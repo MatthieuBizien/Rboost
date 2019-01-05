@@ -4,6 +4,8 @@ use crate::{
     DEFAULT_COLSAMPLE_BYTREE, SHOULD_NOT_HAPPEN,
 };
 use rand::prelude::Rng;
+use rayon::current_num_threads;
+use rayon::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DartParams {
@@ -50,15 +52,30 @@ fn calc_full_prediction(
     learning_rate: f64,
     initial_prediction: f64,
 ) {
-    dest.iter_mut().for_each(|e| *e = initial_prediction);
-    for ((predictions, &weight), &keep) in predictions.columns().zip(tree_weights).zip(filter) {
-        if !keep {
-            continue;
-        }
-        for (dest, prediction) in dest.iter_mut().zip(predictions) {
-            *dest += prediction * weight * learning_rate;
-        }
-    }
+    let chunk_size = predictions.n_rows() / current_num_threads();
+    // We split the dataset by rows
+    dest.par_chunks_mut(chunk_size)
+        .enumerate()
+        .for_each(|(n_chunk, dest)| {
+            // Initialization of the dataset at the initial prediction
+            dest.iter_mut().for_each(|e| *e = initial_prediction);
+
+            let first_original_idx = chunk_size * n_chunk;
+
+            // We add the trees to the current chunk
+            for ((predictions, &weight), &keep) in
+                predictions.columns().zip(tree_weights).zip(filter)
+            {
+                // Dropout: we only keep parts of the trees
+                if !keep {
+                    continue;
+                }
+                let predictions = &predictions[first_original_idx..];
+                for (dest, prediction) in dest.iter_mut().zip(predictions) {
+                    *dest += prediction * weight * learning_rate;
+                }
+            }
+        })
 }
 
 impl<L: Loss> Dart<L> {

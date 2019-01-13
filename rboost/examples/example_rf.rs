@@ -1,5 +1,3 @@
-#![feature(duration_as_u128)]
-
 // Example of a regression with a random forest.
 
 extern crate cpuprofiler;
@@ -9,6 +7,7 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use rand::prelude::{SeedableRng, SmallRng};
+use rboost::duration_as_f64;
 use rboost::{parse_csv, rmse, RFParams, RandomForest, RegLoss, TreeParams};
 use std::fs::File;
 use std::io::Write;
@@ -49,7 +48,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     let profile_path = "./example_rf.profile";
     println!("Profiling to {}", profile_path);
     PROFILER.lock()?.start(profile_path)?;
-    let predict_start_time = Instant::now();
+    let train_start_time = Instant::now();
 
     let (rf, yhat_cv) = RandomForest::build(
         // Important: we have to transform the dataset to a PreparedDataset.
@@ -64,7 +63,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     println!(
         "{} RF fit. Elapsed: {:.2} secs",
         rf_params.n_trees,
-        predict_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+        duration_as_f64(&train_start_time.elapsed()),
     );
     PROFILER.lock()?.stop()?;
 
@@ -78,7 +77,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         .collect();
     println!(
         "Predictions done in {:.2} secs",
-        predict_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+        duration_as_f64(&predict_start_time.elapsed()),
     );
     println!("RMSE train {:.8}", rmse(&train.target, &yhat_train));
 

@@ -1,5 +1,3 @@
-#![feature(duration_as_u128)]
-
 extern crate cpuprofiler;
 extern crate csv;
 extern crate rboost;
@@ -7,6 +5,7 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use rand::prelude::{SeedableRng, SmallRng};
+use rboost::duration_as_f64;
 use rboost::{
     accuracy_score, parse_csv, roc_auc_score, BinaryLogLoss, Dart, DartParams, TreeParams,
 };
@@ -52,7 +51,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     println!(
         "Training of {} trees finished. Elapsed: {:.2} secs",
         gbt.n_trees(),
-        train_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+        duration_as_f64(&train_start_time.elapsed()),
     );
     PROFILER.lock()?.stop()?;
 

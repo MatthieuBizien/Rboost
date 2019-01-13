@@ -1,5 +1,3 @@
-#![feature(duration_as_u128)]
-
 /// WARNING: boosting is NOT ready, do NOT use it for real work
 extern crate cpuprofiler;
 extern crate csv;

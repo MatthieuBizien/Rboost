@@ -1,5 +1,3 @@
-#![feature(duration_as_u128)]
-
 extern crate cpuprofiler;
 extern crate csv;
 extern crate rboost;

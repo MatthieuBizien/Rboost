@@ -1,5 +1,3 @@
-#![feature(duration_as_u128)]
-
 // Example of a regression with a random forest.
 
 extern crate cpuprofiler;
@@ -9,6 +7,7 @@ extern crate serde_json;
 
 use cpuprofiler::PROFILER;
 use rand::prelude::{SeedableRng, SmallRng};
+use rboost::duration_as_f64;
 use rboost::{
     accuracy_score, parse_csv, roc_auc_score, BinaryLogLoss, RFParams, RandomForest, TreeParams,
 };
@@ -64,7 +63,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
     println!(
         "{} RF fit. Elapsed: {:.2} secs",
         rf_params.n_trees,
-        predict_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+        duration_as_f64(&predict_start_time.elapsed()),
     );
     PROFILER.lock()?.stop()?;
 
@@ -82,7 +81,7 @@ fn main() -> Result<(), Box<::std::error::Error>> {
         .collect();
     println!(
         "Predictions done in {:.2} secs",
-        predict_start_time.elapsed().as_nanos() as f64 / 1_000_000_000.
+        duration_as_f64(&predict_start_time.elapsed()),
     );
     println!(
         "TRAIN: ROC AUC {:.8}, accuracy {:.8}",

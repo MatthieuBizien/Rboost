@@ -3,16 +3,30 @@ language: rust
 rust:
   - 1.31.0
   - stable
-  - beta
   - nightly
 
-cache: cargo
+# Allow a cleaner error message
+env:
+  - RUST_BACKTRACE=full
+
+# Optimise cache according to https://levans.fr/rust_travis_cache.html
+# Need to cache the whole `.cargo` directory to keep .crates.toml for
+# cargo-update to work
+cache:
+  apt: true
+  directories:
+  - /home/travis/.cargo
+# But don't cache the cargo registry
+
+before_cache:
+- rm -rf /home/travis/.cargo/registry
+
+install:
+  - rustup component add rustfmt
 
 script:
-  - rustup component add rustfmt-preview
-  - cd rboost
-  - cargo fmt -- --check
-  - cargo test --all
+  # TODO add --benches
+  - ./build-travis.sh
 
 addons:
   apt:
